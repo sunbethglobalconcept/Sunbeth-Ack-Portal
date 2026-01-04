@@ -16,21 +16,19 @@ const Summary: React.FC = () => {
     if (!batchId || !account) return;
     setNudgeStatus('sending');
     try {
-      // Fetch all documents for this batch
+      // Fetch documents; use the first document to trigger notify (avoid bulk duplicate acks)
       const docs = await import('../services/dbService').then(m => m.getDocumentsByBatch(batchId));
       if (!Array.isArray(docs) || docs.length === 0) throw new Error('No documents found for batch');
-      // Send acknowledgement for each document
-      for (const doc of docs) {
-        await sendAcknowledgement({
-          batchId,
-          documentId: doc.toba_documentid || doc.id || doc.documentId,
-          userDisplay: account.name,
-          userEmail: account.username,
-          userPrincipalName: account.username,
-          email: account.username,
-          ackmethod: 'Nudge Admin (manual)'
-        });
-      }
+      const first = docs[0];
+      await sendAcknowledgement({
+        batchId,
+        documentId: first.toba_documentid || first.id || first.documentId,
+        userDisplay: account.name,
+        userEmail: account.username,
+        userPrincipalName: account.username,
+        email: account.username,
+        ackmethod: 'Notify Admin (manual)'
+      });
       setNudgeStatus('sent');
       await alertSuccess('Notification Sent', 'The admin has been notified that you have completed your batch.');
     } catch (err) {
@@ -55,6 +53,40 @@ const Summary: React.FC = () => {
 
   const isComplete = percent !== null && percent >= 100;
 
+  // Auto-notify admin once when completion is detected (no manual click required)
+  useEffect(() => {
+    if (!isComplete || !batchId || !account?.username) return;
+    const key = `sunbeth:autoNotified:${batchId}:${String(account.username).toLowerCase()}`;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (localStorage.getItem(key) === '1') return;
+      } catch {}
+      try {
+        setNudgeStatus((s) => (s === 'sent' ? s : 'sending'));
+        const docs = await import('../services/dbService').then(m => m.getDocumentsByBatch(batchId));
+        if (!Array.isArray(docs) || docs.length === 0) throw new Error('No documents found for batch');
+        const first = docs[0];
+        await sendAcknowledgement({
+          batchId,
+          documentId: first.toba_documentid || first.id || first.documentId,
+          userDisplay: account.name,
+          userEmail: account.username,
+          userPrincipalName: account.username,
+          email: account.username,
+          ackmethod: 'Notify Admin (auto)'
+        });
+        if (!cancelled) {
+          setNudgeStatus('sent');
+          try { localStorage.setItem(key, '1'); } catch {}
+        }
+      } catch {
+        if (!cancelled) setNudgeStatus('idle');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isComplete, batchId, account?.username, account?.name]);
+
   return (
     <div className="container">
       <div className="card" style={{ textAlign: 'center' }}>
@@ -66,8 +98,14 @@ const Summary: React.FC = () => {
         <div style={{ height: 14 }} />
         {isComplete && (
           <div style={{ marginBottom: 12 }}>
-            <button className="btn sm" onClick={handleNudge} disabled={nudgeStatus==='sending' || nudgeStatus==='sent'}>
-              {nudgeStatus === 'idle' && 'Notify Admin'}
+            <button
+              className="btn sm"
+              onClick={handleNudge}
+              disabled={nudgeStatus==='sending' || nudgeStatus==='sent'}
+              title="Admin is notified automatically. Use only if needed."
+              style={{ opacity: 0.55 }}
+            >
+              {nudgeStatus === 'idle' && 'Notify Admin (Optional)'}
               {nudgeStatus === 'sending' && 'Sending...'}
               {nudgeStatus === 'sent' && 'Notification Sent!'}
               {nudgeStatus === 'error' && 'Error, Try Again'}

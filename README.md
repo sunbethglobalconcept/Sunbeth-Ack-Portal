@@ -117,21 +117,21 @@ Before running this project, ensure you have:
    ```
    The API will be available at `http://localhost:4000`
    
-   Development requests to `/api/*` from the React app are proxied to `http://127.0.0.1:4000` by `src/setupProxy.js`.
+   Development requests to `/api/*` from the React app are proxied to `http://localhost:4000` by `src/setupProxy.js`.
 
 #### Multi-tenant theming in dev (no hosts file required)
 
 To test different tenant themes without editing your OS hosts file, you can set an environment variable that the dev proxy forwards to the backend as a header.
 
 - Select API target (defaults to 4000):
-   - `REACT_APP_DEV_API_TARGET=http://127.0.0.1:4000`
+   - `REACT_APP_DEV_API_TARGET=http://localhost:4000`
 - Select tenant by domain header (optional):
    - `REACT_APP_DEV_TENANT_DOMAIN=orga.local.test`
 
 Example (PowerShell on Windows):
 
 ```powershell
-$env:REACT_APP_DEV_API_TARGET='http://127.0.0.1:4000'
+$env:REACT_APP_DEV_API_TARGET='http://localhost:4000'
 $env:REACT_APP_DEV_TENANT_DOMAIN='orga.local.test'  # or orgb.local.test, etc.
 npm start
 ```

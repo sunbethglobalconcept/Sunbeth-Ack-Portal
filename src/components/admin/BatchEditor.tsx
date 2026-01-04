@@ -104,7 +104,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
       <h2 style={{ fontSize: 18, marginBottom: 16 }}>{editingBatchId ? 'Edit Batch' : 'Create New Batch'}</h2>
 
       {/* Batch Details */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }} className="batch-form-header">
         <div>
           <label className="small" htmlFor="batchName">Batch Name:</label>
           <input
@@ -152,8 +152,9 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
       {/* Assignment Section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div className="small muted">Choose how you want to select recipients and documents.</div>
-        <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label className="small modal-selector-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
+            id="useModalSelectorsToggle"
             type="checkbox"
             checked={useModalSelectors}
             onChange={e => {
@@ -167,11 +168,13 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
 
       {!useModalSelectors ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
-          <UserGroupSelector onSelectionChange={(selection: any) => setBatchForm({ ...batchForm, selectedUsers: selection.users, selectedGroups: selection.groups })} />
+          <div className="recipients-selector">
+            <UserGroupSelector onSelectionChange={(selection: any) => setBatchForm({ ...batchForm, selectedUsers: selection.users, selectedGroups: selection.groups })} />
+          </div>
 
           {/* Import progress banner (inline) */}
           {importBusy && (
-            <div className="small" style={{ background: '#fff8e1', border: '1px solid #ffe0b2', padding: 8, borderRadius: 6 }}>
+            <div className="small import-progress-banner" style={{ background: '#fff8e1', border: '1px solid #ffe0b2', padding: 8, borderRadius: 6 }}>
               Importing to Library... {importDone}/{importTotal}
               <div className="progressBar" aria-hidden="true" style={{ marginTop: 6 }}><i style={{ width: `${importTotal ? Math.round((importDone/importTotal)*100) : 0}%` }} /></div>
               {importRows.length > 0 && (
@@ -187,11 +190,14 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
             </div>
           )}
 
-          <LocalLibraryPicker onAdd={(docs) => setBatchForm(prev => ({
-            ...prev,
-            selectedDocuments: props.mergeDocuments(prev.selectedDocuments, docs)
-          }))} />
-          <SharePointBrowser canUpload={!!canUploadDocuments} onDocumentSelect={async (spDocs) => {
+          <div className="library-picker-section">
+            <LocalLibraryPicker onAdd={(docs) => setBatchForm(prev => ({
+              ...prev,
+              selectedDocuments: props.mergeDocuments(prev.selectedDocuments, docs)
+            }))} />
+          </div>
+          <div className="sharepoint-picker-section">
+            <SharePointBrowser canUpload={!!canUploadDocuments} onDocumentSelect={async (spDocs) => {
             // Import SharePoint selections to server library with progress/dedupe status
             try {
               const base = (getApiBase() as string) || '';
@@ -238,9 +244,10 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
               props.setImportBusy(false);
             }
           }} />
+          </div>
 
           {/* Selected documents list with remove control */}
-          <div className="card" style={{ padding: 16 }}>
+          <div className="card batch-documents-section" style={{ padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>Selected Documents</div>
@@ -272,7 +279,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
           </div>
 
           {/* Business Mapping */}
-          <div className="card" style={{ padding: 16 }}>
+          <div className="card business-mapping-section" style={{ padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>Business Mapping</div>
@@ -322,7 +329,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 24 }}>
           {/* Recipients Summary Card */}
-          <div className="card" style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="card batch-users-section" style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 700 }}>Assign to Users & Groups</div>
               <div className="small muted">{batchForm.selectedUsers.length} users, {batchForm.selectedGroups.length} groups selected</div>
@@ -331,7 +338,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
           </div>
 
           {/* Documents Summary Card */}
-          <div className="card" style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="card documents-summary-card" style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 700 }}>Documents</div>
               <div className="small muted">{batchForm.selectedDocuments.length} document(s) selected</div>
@@ -340,7 +347,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
           </div>
 
           {/* Business Mapping Summary Card */}
-          <div className="card" style={{ padding: 16 }}>
+          <div className="card business-mapping-section" style={{ padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontWeight: 700 }}>Business Mapping</div>
@@ -386,18 +393,18 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
       )}
 
       {/* Summary & Create */}
-      <div style={{ backgroundColor: '#f8f9fa', padding: 16, borderRadius: 8 }}>
+  <div className="batch-summary" style={{ backgroundColor: '#f8f9fa', padding: 16, borderRadius: 8 }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: 16 }}>Batch Summary</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-          <div>
+          <div className="summary-assigned">
             <div className="small muted">Assigned Users:</div>
             <div style={{ fontWeight: 'bold' }}>{batchForm.selectedUsers.length + (batchForm.selectedGroups.reduce((acc: number, g: any) => acc + (g.memberCount || 0), 0))}</div>
           </div>
-          <div>
+          <div className="summary-documents">
             <div className="small muted">Documents:</div>
             <div style={{ fontWeight: 'bold' }}>{batchForm.selectedDocuments.length}</div>
           </div>
-          <div>
+          <div className="summary-duration">
             <div className="small muted">Duration:</div>
             <div style={{ fontWeight: 'bold' }}>
               {batchForm.startDate && batchForm.dueDate ?
@@ -408,29 +415,29 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
         </div>
 
         {/* Notification options */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="notification-options" style={{ display: 'flex', gap: 16, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={batchForm.notifyByEmail} onChange={e => setBatchForm({ ...batchForm, notifyByEmail: e.target.checked })} />
+            <input id="notifyByEmail" type="checkbox" checked={batchForm.notifyByEmail} onChange={e => setBatchForm({ ...batchForm, notifyByEmail: e.target.checked })} />
             <span className="small">Email notification (Microsoft Graph)</span>
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: .6 }} title="Requires Teams Chat.ReadWrite; coming soon">
-            <input type="checkbox" checked={batchForm.notifyByTeams} onChange={e => setBatchForm({ ...batchForm, notifyByTeams: e.target.checked })} disabled />
+            <input id="notifyByTeams" type="checkbox" checked={batchForm.notifyByTeams} onChange={e => setBatchForm({ ...batchForm, notifyByTeams: e.target.checked })} disabled />
             <span className="small">Teams message (optional)</span>
           </label>
         </div>
 
         <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
           <button
-            className="btn"
+            className="btn batch-save-button"
             onClick={saveBatch}
             disabled={!batchForm.name || !batchForm.startDate || !batchForm.dueDate || batchForm.selectedDocuments.length === 0 || (batchForm.selectedUsers.length === 0 && batchForm.selectedGroups.length === 0)}
           >
             {editingBatchId ? 'Save Changes' : 'Create Batch'}
           </button>
-          <button className="btn ghost" onClick={() => { setBatchForm({ name: '', startDate: '', dueDate: '', description: '', selectedUsers: [], selectedGroups: [], selectedDocuments: [], notifyByEmail: true, notifyByTeams: false }); props.setBusinessMap({}); setDefaultBusinessId(''); }}>
+          <button id="reset-batch-form" className="btn ghost" onClick={() => { setBatchForm({ name: '', startDate: '', dueDate: '', description: '', selectedUsers: [], selectedGroups: [], selectedDocuments: [], notifyByEmail: true, notifyByTeams: false }); props.setBusinessMap({}); setDefaultBusinessId(''); }}>
             {editingBatchId ? 'Cancel Edit' : 'Reset Form'}
           </button>
-          <button className="btn ghost" title="Preview expanded recipients" onClick={async () => {
+          <button id="preview-recipients-button" className="btn ghost" title="Preview expanded recipients" onClick={async () => {
             try {
               const recipientSet = new Set<string>();
               for (const u of batchForm.selectedUsers) {
@@ -452,7 +459,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
               showToast('Failed to preview recipients', 'error');
             }
           }}>Preview Recipients</button>
-          <button className="btn ghost" title="Grant Graph permissions" onClick={async () => {
+          <button id="grant-permissions-button" className="btn ghost" title="Grant Graph permissions" onClick={async () => {
             try {
               // Trigger consent prompts for common scopes used in Admin
               await getGraphToken(['User.Read.All','Group.Read.All']);

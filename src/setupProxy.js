@@ -4,7 +4,7 @@
 
   Environment knobs:
   - REACT_APP_DEV_API_TARGET: Full target base. If set, we use it verbatim.
-    Example: http://127.0.0.1:4000
+    Example: http://localhost:4000
   - REACT_APP_DEV_TENANT_DOMAIN: Optional tenant domain header to simulate multi-tenant in dev
     Example: orga.local.test (sent as X-Tenant-Domain to backend)
 */
@@ -12,11 +12,11 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function (app) {
-  const target = process.env.REACT_APP_DEV_API_TARGET || 'http://127.0.0.1:4000';
+  const target = process.env.REACT_APP_DEV_API_TARGET || 'http://localhost:4000';
   const tenantDomain = process.env.REACT_APP_DEV_TENANT_DOMAIN || '';
 
   // Example mapping:
-  //   /api/proxy -> http://127.0.0.1:4000/api/proxy
+  //   /api/proxy -> http://localhost:4000/api/proxy
   app.use(
     '/api',
     createProxyMiddleware({

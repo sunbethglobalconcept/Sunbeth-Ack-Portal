@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBase } from '../utils/runtimeConfig';
+import { apiGet } from '../services/api';
 import Modal from './Modal';
 
 // Simple date helpers
@@ -30,7 +31,7 @@ export type AuditLogRow = {
 const pageSizeOptions = [25, 50, 100, 200];
 
 const AuditLogs: React.FC = () => {
-  const apiBase = (getApiBase() as string) || '';
+  // api base resolved centrally in api client; keep env for diagnostics in error messages
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<AuditLogRow[]>([]);
@@ -82,10 +83,31 @@ const AuditLogs: React.FC = () => {
     setLoading(true); setError(null);
     try {
       const sp = new URLSearchParams(params as any).toString();
-      const res = await fetch(`${apiBase}/api/audit-logs?${sp}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = await res.json();
-      const list: AuditLogRow[] = Array.isArray(j?.logs) ? j.logs : [];
+      // Prefer centralized API client; on failure, try alternate base candidates
+      let j: any = null;
+      try {
+        j = await apiGet(`/api/audit-logs?${sp}`, { cache: 'no-store' });
+      } catch (primaryErr) {
+        const envBase = (getApiBase() || '').replace(/\/$/, '');
+        const hintedBase = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE))
+          ? String((window as any).__API_BASE__ || (window as any).API_BASE).replace(/\/$/, '')
+          : '';
+        const candidates = Array.from(new Set([envBase, hintedBase, 'http://127.0.0.1:4000', 'http://localhost:4000'].filter(Boolean)));
+        let lastErr: any = primaryErr;
+        for (const base of candidates) {
+          try {
+            const res = await fetch(`${base}/api/audit-logs?${sp}`, { cache: 'no-store' });
+            if (res.ok) { j = await res.json(); break; }
+            lastErr = new Error(`HTTP ${res.status}`);
+          } catch (e) { lastErr = e; }
+        }
+        if (!j) throw lastErr;
+      }
+      const list: AuditLogRow[] = Array.isArray(j?.logs)
+        ? j.logs
+        : (j?.logs && typeof j.logs === 'object')
+          ? Object.values(j.logs)
+          : [];
       // Client sort (server already returns newest first by id)
       const sorted = [...list].sort((a, b) => {
         const { key, dir } = sort;
@@ -98,7 +120,8 @@ const AuditLogs: React.FC = () => {
       });
       setRows(sorted);
     } catch (e: any) {
-      setError('Failed to load audit logs');
+      const base = getApiBase() || window.location.origin;
+      setError(`Failed to load audit logs${base ? ` from ${base}` : ''}`);
     } finally {
       setLoading(false);
     }

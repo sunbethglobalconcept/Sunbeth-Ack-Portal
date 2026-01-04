@@ -1,115 +1,83 @@
+/* eslint-disable max-lines, complexity, max-lines-per-function */
 import * as XLSX from 'xlsx';
 
 type ExportOpts = { year?: number | string, adminEmail?: string };
 
 /**
- * Export core datasets to an Excel workbook with multiple sheets for analysis.
- * Sheets: Batches, Documents, Recipients
+ * Export a single, management-ready acknowledgement sheet (business + user + batch + document).
  */
 export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
-  const sqliteEnabled = (process.env.REACT_APP_ENABLE_SQLITE === 'true') && !!process.env.REACT_APP_API_BASE;
-  if (!sqliteEnabled) {
-    throw new Error('SQLite API must be enabled to export analytics');
-  }
-  const base = (process.env.REACT_APP_API_BASE as string).replace(/\/$/, '');
-  const year = String((opts.year ?? new Date().getFullYear()));
-  const adminEmail = String(opts.adminEmail || '').trim().toLowerCase();
-
-  // Fetch batches and recipients
-  const [batchesRes, recRes] = await Promise.all([
-    fetch(`${base}/api/batches`),
-    fetch(`${base}/api/recipients`)
-  ]);
-  const batches = await batchesRes.json().catch(() => []);
-  const recipients = await recRes.json().catch(() => []);
-
-  // For documents, we need to query per batch to align with server contract
-  const docsRows: any[] = [];
-  for (const b of (Array.isArray(batches) ? batches : [])) {
-    const id = String((b.toba_batchid || b.id));
-    if (!id) continue;
-    try {
-      const dRes = await fetch(`${base}/api/batches/${encodeURIComponent(id)}/documents`);
-      const rows = await dRes.json();
-      for (const d of (Array.isArray(rows) ? rows : [])) {
-        docsRows.push({ batchId: id, ...d });
-      }
-    } catch {}
-  }
-
-  // Map/normalize columns
-  const batchSheetRows = (Array.isArray(batches) ? batches : []).map((r: any) => ({
-    id: String(r.toba_batchid || r.id),
-    name: String(r.toba_name || r.name || ''),
-    startDate: r.toba_startdate || r.startDate || '',
-    dueDate: r.toba_duedate || r.dueDate || '',
-    status: r.toba_status != null ? String(r.toba_status) : (r.status != null ? String(r.status) : ''),
-    description: r.description || ''
-  }));
-
-  const docSheetRows = docsRows.map((d: any) => ({
-    id: String(d.toba_documentid || d.id || ''),
-    batchId: String(d.batchId || d.toba_batchid || ''),
-    title: String(d.toba_title || d.title || ''),
-    url: String(d.toba_fileurl || d.url || ''),
-    version: Number(d.toba_version || d.version || 1),
-    requiresSignature: (d.toba_requiressignature ?? d.requiresSignature) ? true : false,
-    driveId: d.toba_driveid || d.driveId || '',
-    itemId: d.toba_itemid || d.itemId || '',
-    source: d.toba_source || d.source || ''
-  }));
-
-  const recSheetRows = (Array.isArray(recipients) ? recipients : []).map((r: any) => ({
-    id: Number(r.id),
-    batchId: Number(r.batchId),
-    businessId: r.businessId != null ? Number(r.businessId) : '',
-    email: String(r.email || r.user || ''),
-    displayName: String(r.displayName || ''),
-    department: r.department || '',
-    jobTitle: r.jobTitle || '',
-    location: r.location || '',
-    primaryGroup: r.primaryGroup || ''
-  }));
-
-  const wb = XLSX.utils.book_new();
-  const wsBatches = XLSX.utils.json_to_sheet(batchSheetRows);
-  const wsDocs = XLSX.utils.json_to_sheet(docSheetRows);
-  const wsRecs = XLSX.utils.json_to_sheet(recSheetRows);
-
-  XLSX.utils.book_append_sheet(wb, wsBatches, 'Batches');
-  XLSX.utils.book_append_sheet(wb, wsDocs, 'Documents');
-  XLSX.utils.book_append_sheet(wb, wsRecs, 'Recipients');
-
-  // Add Acknowledgements sheet (yearly, includes legal consent timestamp)
-  try {
-    const acksUrl = `${base}/api/admin/acks/export?year=${encodeURIComponent(year)}`;
-    const headers: any = {};
-    if (adminEmail) headers['x-admin-email'] = adminEmail;
-    const acksRes = await fetch(acksUrl, { headers });
-    if (acksRes.ok) {
-      const json = await acksRes.json().catch(() => ({} as any));
-      const rows = Array.isArray(json.records) ? json.records : [];
-      if (rows.length > 0) {
-        const norm = rows.map((r: any) => ({
-          year: String(r.year || year),
-          batchId: String(r.batchId || ''),
-          batchName: String(r.batchName || ''),
-          documentId: String(r.documentId || ''),
-          documentTitle: String(r.documentTitle || ''),
-          email: String(r.email || ''),
-          displayName: String(r.displayName || ''),
-          department: r.department || '',
-          jobTitle: r.jobTitle || '',
-          location: r.location || '',
-          primaryGroup: r.primaryGroup || '',
-          businessId: r.businessId != null ? Number(r.businessId) : '',
-          acknowledgedAt: String(r.acknowledgedAt || ''),
-          legalConsentedAt: String(r.legalConsentedAt || '')
-        }));
-        const wsAcks = XLSX.utils.json_to_sheet(norm);
-        XLSX.utils.book_append_sheet(wb, wsAcks, 'Acknowledgements');
-      }
+  const getApiBases = () => {
+    const envBase = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
+    const hinted = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE))
+      ? String((window as any).__API_BASE__ || (window as any).API_BASE).replace(/\/$/, '')
+      : '';
+    const local = 'http://127.0.0.1:4000';
+    return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
+  };
+  const tryFetchJson = async (path: string) => {
+    const bases = getApiBases();
+    let lastErr: any = null;
+    for (const b of bases) {
+      try {
+        const r = await fetch(`${b}${path}`);
+        if (r.ok) return await r.json();
+      } catch (e) { lastErr = e; }
     }
+    if (lastErr) throw lastErr;
+    throw new Error('All API base candidates failed: ' + bases.join(', '));
+  };
+  const year = String((opts.year ?? new Date().getFullYear()));
+  const adminEmail = String(opts.adminEmail || '').trim().toLowerCase(); // kept for potential auth headers
+  const wb = XLSX.utils.book_new();
+
+  // Recipients map to enrich ack rows (job title, location, etc.)
+  const recipients = await tryFetchJson('/api/recipients').catch(() => []);
+  const recKey = (batchId: any, email: any) => `${String(batchId)}::${String(email || '').toLowerCase()}`;
+  const recMap = new Map(
+    (Array.isArray(recipients) ? recipients : []).map((r: any) => [
+      recKey(r.batchId, r.email || r.user),
+      {
+        displayName: r.displayName || '',
+        department: r.department || '',
+        primaryGroup: r.primaryGroup || '',
+        jobTitle: r.jobTitle || '',
+        location: r.location || '',
+        businessId: r.businessId != null ? String(r.businessId) : ''
+      }
+    ])
+  );
+
+  // Add Acknowledgements sheet (robust, business + user + batch + document)
+  try {
+    const ackRes = await tryFetchJson('/api/ack-report?limit=5000');
+    const rows = Array.isArray((ackRes as any)?.items) ? (ackRes as any).items : Array.isArray(ackRes) ? ackRes : [];
+    const sourceRows = rows.length > 0 ? rows : [];
+    const norm = (sourceRows as any[]).map((r: any) => ({
+      year: String(year),
+      ackId: String(r.ackId || ''),
+      acknowledged: r.acknowledged ?? '',
+      acknowledgedAt: String(r.acknowledgedAt || ''),
+      businessId: r.businessId != null ? String(r.businessId) : (recMap.get(recKey(r.batchId, r.email))?.businessId || ''),
+      businessName: String(r.businessName || ''),
+      batchId: String(r.batchId || ''),
+      batchName: String(r.batchName || ''),
+      batchCreatedAt: String(r.batchCreatedAt || ''),
+      dueDate: String(r.dueDate || ''),
+      documentId: String(r.documentId || ''),
+      documentTitle: String(r.documentTitle || ''),
+      documentVersion: r.documentVersion != null ? Number(r.documentVersion) : '',
+      documentSource: String(r.documentSource || ''),
+      documentUrl: String(r.documentUrl || ''),
+      email: String(r.email || ''),
+      displayName: String(r.displayName || recMap.get(recKey(r.batchId, r.email))?.displayName || ''),
+      department: r.department || recMap.get(recKey(r.batchId, r.email))?.department || '',
+      primaryGroup: r.primaryGroup || recMap.get(recKey(r.batchId, r.email))?.primaryGroup || '',
+      jobTitle: recMap.get(recKey(r.batchId, r.email))?.jobTitle || '',
+      location: recMap.get(recKey(r.batchId, r.email))?.location || ''
+    }));
+    const wsAcks = XLSX.utils.json_to_sheet(norm);
+    XLSX.utils.book_append_sheet(wb, wsAcks, 'Acknowledgements');
   } catch (e) {
     // Non-fatal if acks export is unavailable or user lacks permission
     console.warn('Acknowledgements export failed or unavailable', e);
@@ -120,7 +88,7 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `sunbeth-ack-analytics-${year}.xlsx`;
+  a.download = `sunbeth-acknowledgements-${year}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 };

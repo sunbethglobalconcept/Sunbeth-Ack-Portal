@@ -1,0 +1,185 @@
+/* TabTours.css - Styling for tab-specific tours */
+
+.tab-tour-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 16px;
+}
+
+.tour-mode-selector {
+  display: flex;
+  gap: 6px;
+}
+
+.tour-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.tour-btn-guide {
+  background: #4a90e2;
+  color: white;
+  border-color: #4a90e2;
+}
+
+.tour-btn-guide:hover {
+  background: #357abd;
+  border-color: #357abd;
+  transform: translateY(-1px);
+}
+
+.tour-btn-follow {
+  background: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+
+.tour-btn-follow:hover {
+  background: #218838;
+  border-color: #218838;
+  transform: translateY(-1px);
+}
+
+.tour-btn-reset {
+  background: #6c757d;
+  color: white;
+  border-color: #6c757d;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.tour-btn-reset:hover {
+  background: #545b62;
+  border-color: #545b62;
+}
+
+.tour-btn-reset-all {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.tour-btn-reset-all:hover {
+  background: #c82333;
+  border-color: #c82333;
+}
+
+/* First-time user indicator */
+.tour-new-indicator {
+  position: relative;
+}
+
+.tour-new-indicator::after {
+  content: '●';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  color: #dc3545;
+  font-size: 12px;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Tab-specific tour styling */
+.shepherd-element.tab-tour-step {
+  border-color: #28a745;
+}
+
+.shepherd-element.tab-tour-step .shepherd-header {
+  background: linear-gradient(135deg, #28a745, #218838);
+}
+
+.shepherd-element.follow-mode {
+  border-color: #ffc107;
+}
+
+.shepherd-element.follow-mode .shepherd-header {
+  background: linear-gradient(135deg, #ffc107, #e0a800);
+  color: #000;
+}
+
+.shepherd-element.follow-mode .shepherd-title {
+  color: #000;
+}
+
+/* Interactive follow-along indicators */
+.follow-mode-highlight {
+  animation: follow-highlight 2s infinite;
+  position: relative;
+}
+
+.follow-mode-highlight::before {
+  content: '👆';
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: bounce-pointer 1s infinite;
+  z-index: 1000;
+}
+
+@keyframes follow-highlight {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+  }
+}
+
+@keyframes bounce-pointer {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-5px); }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .tab-tour-controls {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .tour-btn {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  
+  .tour-mode-selector {
+    flex: 1;
+    justify-content: space-between;
+  }
+}
+
+/* Success states for follow-along mode */
+.follow-completed {
+  border: 2px solid #28a745 !important;
+  background: rgba(40, 167, 69, 0.1) !important;
+}
+
+.follow-completed::after {
+  content: '✓';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  color: #28a745;
+  font-weight: bold;
+  font-size: 16px;
+}

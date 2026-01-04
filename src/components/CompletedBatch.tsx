@@ -1,14 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getDocumentsByBatch, getAcknowledgedDocIds } from '../services/dbService';
+import { useExternalAuth } from '../context/ExternalAuthContext';
+import { getDocumentsByBatch, getAcknowledgedDocIds, getBatches } from '../services/dbService';
+import { generateCertificatePdf, generateCertificatePng } from '../services/notificationService';
 import type { Doc } from '../types/models';
 
 const CompletedBatch: React.FC = () => {
   const { id } = useParams();
   const { token, account } = useAuth();
+  const { user: externalUser } = useExternalAuth();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [ackIds, setAckIds] = useState<string[]>([]);
+  const [batchName, setBatchName] = useState<string>('');
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -20,7 +26,65 @@ const CompletedBatch: React.FC = () => {
     })();
   }, [id, token, account?.username]);
 
-  const ackedDocs = useMemo(() => docs.filter(d => ackIds.includes(d.toba_documentid)), [docs, ackIds]);
+  // Fetch batch name for nicer certificate filename and payload
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const email = (account?.username || externalUser?.email || undefined);
+        const batches = await getBatches(token ?? undefined, email);
+        const match = Array.isArray(batches) ? batches.find((b: any) => String(b.toba_batchid || b.id) === String(id)) : null;
+        if (match && (match.toba_name || match.name)) setBatchName(String(match.toba_name || match.name));
+        else setBatchName(`Batch ${id}`);
+      } catch { setBatchName(`Batch ${id}`); }
+    })();
+  }, [id, token, account?.username, externalUser?.email]);
+
+  const ackedDocs = useMemo(() => {
+    const list = Array.isArray(docs) ? docs : [];
+    const ids = Array.isArray(ackIds) ? ackIds : [];
+    return list.filter(d => ids.includes(d.toba_documentid));
+  }, [docs, ackIds]);
+
+  const handleDownloadCertificate = async (format: 'pdf' | 'png' = 'pdf') => {
+    if (!id) return;
+    setError(null);
+    setDownloading(true);
+    try {
+      const email = (account?.username || externalUser?.email || '').toString();
+      const userName = (account?.name || externalUser?.name || email || '').toString();
+      const titles = ackedDocs.map(d => d.toba_title).filter(Boolean);
+      const payload = {
+        batchName: batchName || `Batch ${id}`,
+        userEmail: email,
+        userName,
+        completedOn: new Date().toISOString(),
+        documents: titles,
+        verifyUrl: `${window.location.origin}/batch/${encodeURIComponent(String(id))}/completed`,
+        pageSize: 'quarter' as const,
+      };
+      const file = format === 'pdf' ? await generateCertificatePdf(payload) : await generateCertificatePng(payload);
+      // Convert base64 to Blob and trigger download
+      const byteCharacters = atob(file.contentBytes);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: file.contentType || (format === 'pdf' ? 'application/pdf' : 'image/png') });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeBatch = (batchName || `Batch ${id}`).replace(/[^a-z0-9-_]+/gi, '-');
+      a.download = file.name || `certificate-${safeBatch}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(`Failed to download certificate: ${e?.message || e}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="container">
@@ -30,9 +94,19 @@ const CompletedBatch: React.FC = () => {
             <div className="title">Completed Documents</div>
             <div className="muted small">You can still view previously acknowledged documents.</div>
           </div>
-          <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
+              {downloading ? 'Preparing…' : 'Download PDF'}
+            </button>
+            <button className="btn ghost sm" onClick={() => handleDownloadCertificate('png')} disabled={downloading || ackedDocs.length === 0}>
+              {downloading ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
+          </div>
         </div>
         <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #f4f4f4' }} />
+
+        {error && <div className="muted" style={{ padding: 12, color: '#b02a37' }}>{error}</div>}
 
         {ackedDocs.length === 0 ? (
           <div className="muted" style={{ padding: 12 }}>No acknowledged documents found.</div>

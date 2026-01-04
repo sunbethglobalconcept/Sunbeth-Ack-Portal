@@ -5,12 +5,19 @@ interface ActionLinksProps {
   openInNewTabUrl: string;
   proxiedDownloadUrl: string;
   originalUrl?: string;
+  // New: show selected business context (optional)
+  selectedBusinessName?: string;
 }
 
-const ActionLinks: React.FC<ActionLinksProps> = ({ docUrl, openInNewTabUrl, proxiedDownloadUrl, originalUrl }) => {
+const ActionLinks: React.FC<ActionLinksProps> = ({ docUrl, openInNewTabUrl, proxiedDownloadUrl, originalUrl, selectedBusinessName }) => {
   if (!docUrl && !originalUrl) return null;
   return (
-    <div className="small" style={{ marginTop: 8, textAlign: 'right' }}>
+    <div className="row" style={{ marginTop: 8 }}>
+      {selectedBusinessName ? (
+        <span className="badge" style={{ alignSelf: 'center' }} title="Selected business">
+          {selectedBusinessName}
+        </span>
+      ) : null}
       {docUrl && (
         <a href={openInNewTabUrl} target="_blank" rel="noopener noreferrer" style={{ marginRight: 12 }}>Open in new tab ↗</a>
       )}

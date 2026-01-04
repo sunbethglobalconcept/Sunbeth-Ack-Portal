@@ -19,9 +19,12 @@ export const getBrandName = (): string => (
   (process.env.REACT_APP_BRAND_NAME || 'Sunbeth')
 );
 
-export const getBrandLogoUrl = (): string | undefined => (
-  process.env.REACT_APP_BRAND_LOGO_URL || undefined
-);
+export const getBrandLogoUrl = (): string | undefined => {
+  const envUrl = (process.env.REACT_APP_BRAND_LOGO_URL || '').trim();
+  if (envUrl) return envUrl;
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  return `${base}/brand/sunbeth-logo.png`;
+};
 
 export const getBrandPrimaryColor = (): string => (
   process.env.REACT_APP_BRAND_COLOR || '#0a3d33'

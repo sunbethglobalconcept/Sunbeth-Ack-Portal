@@ -78,6 +78,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }).catch(err => {
         warn('handleRedirectPromise error', err);
+        try {
+          const msg = String((err && (err.message || err.errorMessage)) || err || '');
+          const isSpaMisconfig = /AADSTS9002326/i.test(msg) || /9002326/.test(msg);
+          if (isSpaMisconfig) {
+            const clientId = process.env.REACT_APP_CLIENT_ID;
+            const tenantId = process.env.REACT_APP_TENANT_ID;
+            const redirectUri = (typeof window !== 'undefined' ? window.location.origin : '');
+            const authority = `https://login.microsoftonline.com/${tenantId}`;
+            warn('MSAL SPA misconfiguration detected', { clientId, tenantId, redirectUri, authority });
+            try {
+              showToast('Azure AD app must be configured as SPA with this redirect URI. See console for details.', 'error');
+            } catch {}
+          }
+        } catch {}
       });
     } catch (e) { /* ignore */ }
 

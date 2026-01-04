@@ -9,6 +9,9 @@ const Onboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [department, setDepartment] = useState('');
+  const [businessId, setBusinessId] = useState<number | ''>('');
+  const [businesses, setBusinesses] = useState<Array<{ id: number; name: string }>>([]);
 
   // Parse email/token from URL if present
   React.useEffect(() => {
@@ -16,6 +19,15 @@ const Onboard: React.FC = () => {
     setEmail(params.get('email') || '');
     setToken(params.get('token') || '');
   }, []);
+
+  // Load businesses list (if available)
+  React.useEffect(() => { (async () => {
+    try {
+      const res = await fetch('/api/businesses', { cache: 'no-store' });
+      const j = await res.json().catch(() => ({}));
+      if (Array.isArray(j?.businesses)) setBusinesses(j.businesses);
+    } catch {}
+  })(); }, []);
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,10 +38,13 @@ const Onboard: React.FC = () => {
     }
     setLoading(true);
     try {
+      const payload: any = { email, token, password };
+      if (department) payload.department = department;
+      if (businessId !== '') payload.businessId = businessId;
       const res = await fetch('/api/external-users/set-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, token, password })
+        body: JSON.stringify(payload)
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Failed to set password');
@@ -75,6 +90,27 @@ const Onboard: React.FC = () => {
               <form onSubmit={handleSetPassword}>
                 <input type="hidden" value={email} />
                 <input type="hidden" value={token} />
+                <div style={{ marginBottom: 16 }}>
+                  <input
+                    type="text"
+                    placeholder="Department (optional)"
+                    value={department}
+                    onChange={e => setDepartment(e.target.value)}
+                    className="form-control"
+                  />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <select
+                    value={businessId === '' ? '' : String(businessId)}
+                    onChange={e => setBusinessId(e.target.value ? Number(e.target.value) : '')}
+                    className="form-control"
+                  >
+                    <option value="">Business (optional)</option>
+                    {businesses.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div style={{ marginBottom: 16 }}>
                   <input
                     type="password"

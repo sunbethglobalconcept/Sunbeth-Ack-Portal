@@ -65,7 +65,12 @@ export const getDocumentById = async (docId: string): Promise<any | null> => {
  * @param token Optional bearer token (not used with current backends)
  */
 export const getBusinesses = async () => {
-  try { return await apiGet(`/api/businesses`); } catch { return [] as any[]; }
+  try {
+    const j = await apiGet(`/api/businesses`);
+    if (j && Array.isArray(j.businesses)) return j.businesses;
+    if (Array.isArray(j)) return j;
+    return [] as any[];
+  } catch { return [] as any[]; }
 };
 
 /**

@@ -84,7 +84,7 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
   if (!sqliteOn()) return <div className="small muted">Enable SQLite to manage batches.</div>;
   return (
     <>
-      <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
+      <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6 }} className="batch-list">
         {items.length === 0 ? (
           <div className="small muted" style={{ padding: 8 }}>No batches.</div>
         ) : items.map(b => {
@@ -114,7 +114,7 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
                   <div className="small muted">{b.toba_duedate || '—'}</div>
                   <span className="badge" style={{ background: (b.toba_status || '1') === '1' ? '#d4edda' : '#e2e3e5', color: (b.toba_status || '1') === '1' ? '#155724' : '#383d41' }}>{(b.toba_status || '1') === '1' ? 'Active' : 'Inactive'}</span>
                   <div className="small muted" />
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} className="batch-actions">
                     <a href={`/batch/${b.toba_batchid}`}><button className="btn ghost sm">View</button></a>
                     <button className="btn ghost sm" onClick={() => openRecipients(b.toba_batchid)}>Recipients</button>
                     <button className="btn ghost sm" onClick={() => onEdit(b.toba_batchid)} disabled={!canEdit}>Edit</button>

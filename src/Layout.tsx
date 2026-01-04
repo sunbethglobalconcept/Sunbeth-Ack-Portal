@@ -1,3 +1,4 @@
+/* eslint-disable max-lines, max-lines-per-function, complexity, max-depth, no-empty, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-empty-function */
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -10,6 +11,7 @@ import { info } from './diagnostics/logger';
 import { getBatches, getUserProgress } from './services/dbService';
 import DancingLogoOverlay from './components/DancingLogoOverlay';
 import { enforceDuePolicies } from './utils/policiesDue';
+import AppWelcomeTour from './components/tours/AppWelcomeTour';
 
 const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
   const { account, token, photo, login, logout } = useAuth();
@@ -173,6 +175,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
         {/* show auth area when signed-in (MSAL) or as external; else show a light nav */}
         {account ? (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <AppWelcomeTour />
             {rbac.isSuperAdmin && (
               <div title="Super Admin (from REACT_APP_SUPER_ADMINS)" style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 8px', borderRadius: 6, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>⚡ Super Admin</span>
@@ -194,6 +197,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           </div>
         ) : isExternal ? (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <AppWelcomeTour />
             <button className="btn ghost sm" aria-label="Toggle theme" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; setTheme(next); try { document.documentElement.setAttribute('data-theme', next); window.dispatchEvent(new CustomEvent('sunbeth:themeChanged')); } catch { /* ignore */ } }}>{theme === 'light' ? 'Dark' : 'Light'} Mode</button>
             <button className="btn ghost sm" aria-label="Toggle sticky header" onClick={() => setStickyHeader(s => !s)}>{stickyHeader ? 'Unpin Header' : 'Pin Header'}</button>
 
@@ -210,6 +214,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           </div>
         ) : (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+            <AppWelcomeTour />
             <a href="/about" className="small" style={{ color: '#fff', textDecoration: 'none', opacity: .95 }}>About</a>
             <button className="btn ghost sm" aria-label="Toggle theme" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; setTheme(next); try { document.documentElement.setAttribute('data-theme', next); window.dispatchEvent(new CustomEvent('sunbeth:themeChanged')); } catch { /* ignore */ } }}>{theme === 'light' ? 'Dark' : 'Light'} Mode</button>
             <button className="btn ghost sm" aria-label="Toggle sticky header" onClick={() => setStickyHeader(s => !s)}>{stickyHeader ? 'Unpin Header' : 'Pin Header'}</button>

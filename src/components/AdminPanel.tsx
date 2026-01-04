@@ -11,7 +11,7 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 // import { exportAnalyticsExcel } from '../utils/excelExport';
 import Modal from './Modal';
 import { useFeatureFlags } from '../context/FeatureFlagsContext';
-import { sendEmail, sendEmailWithAttachmentChunks, buildBatchEmail, fetchAsBase64 /*, sendTeamsDirectMessage*/ } from '../services/notificationService';
+import { sendEmail, buildBatchEmail /*, sendTeamsDirectMessage*/ } from '../services/notificationService';
 import { getGraphToken } from '../services/authTokens';
 import { runAuthAndGraphCheck, Step } from '../diagnostics/health';
 import { getBusinesses } from '../services/dbService';
@@ -23,18 +23,23 @@ import { busyPush, busyPop } from '../utils/busy';
 import { isSQLiteEnabled, getApiBase, isAdminLight, useAdminModalSelectors as adminModalSelectorsDefault } from '../utils/runtimeConfig';
 import RBACMatrix from './RBACMatrix';
 import RolesManager from './admin/RolesManager';
+import UsersManagement from './admin/UsersManagement';
 import ExternalUsersManager from './ExternalUsersManager';
 import BusinessesBulkUpload from './BusinessesBulkUpload';
 import { downloadAllTemplatesExcel, downloadExternalUsersTemplateExcel, downloadExternalUsersTemplateCsv, downloadBusinessesTemplateExcel, downloadBusinessesTemplateCsv } from '../utils/importTemplates';
 import AuditLogs from './AuditLogs';
 import AdminSettings from './admin/AdminSettings';
 import LocalLibraryPicker from './admin/LocalLibraryPicker';
+// ...existing code...
 import ManageBatches from './admin/ManageBatches';
 import BusinessesManager from './admin/BusinessesManager';
 import BatchEditor from './admin/BatchEditor';
 import TabNav, { type TabConfig } from './ui/TabNav';
 import PageHeader from './ui/PageHeader';
 import KPIStat from './ui/KPIStat';
+import UserGuideTour from './tours/UserGuideTour';
+import TabTourManager from './tours/TabTourManager';
+import DocumentLibraryManager from './admin/DocumentLibraryManager';
 
 // AdminSettings moved to ./admin/AdminSettings
 
@@ -52,7 +57,8 @@ const AdminPanel: React.FC = () => {
   const { role, canSeeAdmin, canEditAdmin, isSuperAdmin, perms } = useRBAC();
   const { account } = useAuthCtx();
   const { externalSupport } = useFeatureFlags();
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'policies' | 'rbac' | 'manage' | 'batch' | 'analytics' | 'notificationEmails' | 'diagnostics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'policies' | 'rbac' | 'manage' | 'users' | 'batch' | 'analytics' | 'notificationEmails' | 'diagnostics' | 'library'>('overview');
+  const [usersSubtab, setUsersSubtab] = useState<'directory' | 'guests' | 'roles' | 'permissions' | 'imports'>('directory');
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [originalRecipientEmails, setOriginalRecipientEmails] = useState<Set<string>>(new Set());
   const [originalDocUrls, setOriginalDocUrls] = useState<Set<string>>(new Set());
@@ -292,6 +298,38 @@ const AdminPanel: React.FC = () => {
     setBusinessMap(next);
   };
 
+  const seedSqliteForMe = async () => {
+    try {
+      if (!isSQLiteEnabled()) {
+        alertWarning('SQLite disabled', 'Enable SQLite (REACT_APP_ENABLE_SQLITE=true) and set REACT_APP_API_BASE to seed.');
+        return;
+      }
+      if (!account?.username) {
+        alertInfo('Sign in required', 'Sign in first to seed data for your account.');
+        return;
+      }
+      const base = (getApiBase() as string);
+      const res = await fetch(`${base}/api/seed?email=${encodeURIComponent(account.username)}`, { method: 'POST' });
+      if (!res.ok) throw new Error('seed_failed');
+      const j = await res.json().catch(() => ({}));
+      alertSuccess('SQLite seeded', `BatchId: ${j?.batchId ?? 'n/a'}`);
+    } catch (e) {
+      alertError('Seed failed', 'Unable to seed demo data.');
+    }
+  };
+
+  const grantCorePermissions = async () => {
+    try {
+      await getGraphToken(['User.Read']);
+      await getGraphToken(['Group.Read.All']);
+      await getGraphToken(['Sites.Read.All','Files.ReadWrite.All']);
+      await getGraphToken(['Mail.Send']);
+      showToast('Core Graph permissions granted');
+    } catch (e) {
+      showToast('Grant permissions failed', 'error');
+    }
+  };
+
 
 
   if (!(canSeeAdmin || perms?.viewAdmin)) {
@@ -321,24 +359,49 @@ const AdminPanel: React.FC = () => {
     if (isSuperAdmin || perms?.manageRoles || perms?.managePermissions) {
       base.push({ id: 'rbac', label: 'Permissions', icon: '🔐' } as any);
     }
-    // Always show Notification Emails tab for super admin
-    if (isSuperAdmin) {
+    // Notification Emails available to super admins and admins with settings access
+    if (isSuperAdmin || perms?.manageSettings || canSeeAdmin) {
       base.push({ id: 'notificationEmails', label: 'Notification Emails', icon: '✉️' });
     }
-    base.push(
-      { id: 'manage', label: 'Manage', icon: '🧰' } as any,
-      // Create/edit batch only if allowed (Super Admin always)
-      ...((isSuperAdmin || perms?.createBatch || perms?.editBatch) ? [{ id: 'batch', label: 'Create Batch', icon: '📝' } as any] : []),
-      // Analytics only if allowed (Super Admin always)
-      ...((isSuperAdmin || perms?.viewAnalytics) ? [{ id: 'analytics', label: 'Analytics', icon: '📈' } as any] : [])
-    );
+    // Core admin flows
+    base.push({ id: 'manage', label: 'Manage', icon: '🧰' } as any);
+    if (isSuperAdmin || perms?.createBatch || perms?.editBatch) {
+      base.push({ id: 'batch', label: 'Create Batch', icon: '📝' } as any);
+    }
+    base.push({ id: 'users', label: 'Users', icon: '👥' } as any);
+    if (isSuperAdmin || perms?.viewAnalytics) {
+      base.push({ id: 'analytics', label: 'Analytics', icon: '📈' } as any);
+    }
     // Diagnostics tab (Super Admin only)
     if (isSuperAdmin) {
       base.push({ id: 'diagnostics', label: 'System Diagnostics', icon: '🧪' } as any);
     }
+    // Always show Document Library tab for admins, after Users tab
+    const usersIdx = base.findIndex(t => t.id === 'users');
+    if (usersIdx !== -1) {
+      base.splice(usersIdx + 1, 0, { id: 'library', label: 'Document Library', icon: '📂' });
+    } else {
+      base.push({ id: 'library', label: 'Document Library', icon: '📂' });
+    }
     return base;
   })();
   const sqliteEnabled = isSQLiteEnabled();
+  const usersTabs = (() => {
+    const base: Array<{ id: string; label: string; icon: string }> = [
+      { id: 'directory', label: 'Directory', icon: '👥' },
+    ];
+    if (externalSupport && (isSuperAdmin || perms?.manageRecipients || perms?.manageRoles)) {
+      base.push({ id: 'guests', label: 'Guests', icon: '🌐' });
+    }
+    if (isSuperAdmin || perms?.manageRoles) {
+      base.push({ id: 'roles', label: 'Roles', icon: '🛡️' });
+    }
+    if (isSuperAdmin || perms?.managePermissions) {
+      base.push({ id: 'permissions', label: 'Permissions', icon: '🔐' });
+    }
+    base.push({ id: 'imports', label: 'Imports', icon: '⬇️' });
+    return base;
+  })();
   const [overviewStats, setOverviewStats] = useState<{ totalBatches: number; activeBatches: number; totalUsers: number; completionRate: number; overdueBatches: number; avgCompletionTime: number } | null>(null);
   type Business = { id: string; name: string; code?: string; isActive?: boolean };
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -580,14 +643,14 @@ const AdminPanel: React.FC = () => {
       const docsToPost = !editingBatchId
         ? (handledRelations ? [] : allDocsPayload)
         : allDocsPayload.filter(d => !originalDocUrls.has((d.url || '').trim()));
-      
+
       console.log('🔍 DEBUG: Documents to post:', {
         isCreating: !editingBatchId,
         totalDocs: allDocsPayload.length,
         docsToPost: docsToPost.length,
         batchId
       });
-      
+
       if (docsToPost.length > 0) {
         const docsRes = await fetch(`${base}/api/batches/${batchId}/documents`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -607,7 +670,7 @@ const AdminPanel: React.FC = () => {
       const recipientsPayload = editingBatchId
         ? recipientsPayloadAll.filter(r => !originalRecipientEmails.has((r.email || '').trim().toLowerCase()))
         : (handledRelations ? [] : recipientsPayloadAll);
-      
+
       console.log('🔍 DEBUG: Recipients to post:', {
         isCreating: !editingBatchId,
         totalRecipients: recipientsPayloadAll.length,
@@ -615,7 +678,7 @@ const AdminPanel: React.FC = () => {
         batchId,
         sampleRecipient: recipientsPayload[0]
       });
-      
+
       if (recipientsPayload.length > 0) {
         const recRes = await fetch(`${base}/api/batches/${batchId}/recipients`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -641,40 +704,13 @@ const AdminPanel: React.FC = () => {
         }
       }
 
-      // Send notifications after successful persistence
+      // Send notifications after successful persistence (without document attachments pre-ack)
       if (batchForm.notifyByEmail && recipientsToNotify.length > 0) {
-        // Build attachments from all selected documents
-        const attachments: Array<{ name: string; contentBytes: string; contentType?: string }> = [];
         try {
-          const base = (getApiBase() as string);
-          const docs = batchForm.selectedDocuments;
-          for (const d of docs) {
-            try {
-              const title = d.title || 'document';
-              const isSp = (d as any).source === 'sharepoint' || /sharepoint\.com\//i.test(d.url);
-              let fileUrl = d.url;
-              if (isSp) {
-                try {
-                  const token = await getGraphToken(['Files.Read.All','Sites.Read.All']);
-                  const encoded = encodeURIComponent(d.url);
-                  fileUrl = `${base}/api/proxy/graph?url=${encoded}&token=${encodeURIComponent(token)}&download=1`;
-                } catch {}
-              } else {
-                fileUrl = `${base}/api/proxy?url=${encodeURIComponent(d.url)}`;
-              }
-              const { contentBytes, contentType } = await fetchAsBase64(fileUrl);
-              attachments.push({ name: title, contentBytes, contentType });
-            } catch (e) { /* skip this doc */ }
-          }
-        } catch (e) { /* non-blocking */ }
-        try {
-          if (attachments.length > 0) {
-            await sendEmailWithAttachmentChunks(recipientsToNotify, subject, bodyHtml, attachments);
-          } else {
-            await sendEmail(recipientsToNotify, subject, bodyHtml, undefined);
-          }
+          await sendEmail(recipientsToNotify, subject, bodyHtml, undefined);
+        } catch (e) {
+          console.warn('Email send failed (non-blocking)', e);
         }
-        catch (e) { console.warn('Email send failed (non-blocking)', e); }
       }
 
       // Final feedback
@@ -856,20 +892,30 @@ const AdminPanel: React.FC = () => {
     }
   };
 
+  // Removed unused adminTabs array; use tabs array for navigation
+
   return (
     <div className="container">
       <div className="card">
         {/* Header */}
-        <PageHeader title="Admin Panel" subtitle={`Role: ${role} • ${canEditAdmin ? 'Full Access' : 'Read Only'}`} />
+        <div className="admin-header">
+          <PageHeader title="Admin Panel" subtitle={`Role: ${role} • ${canEditAdmin ? 'Full Access' : 'Read Only'}`} />
+          <UserGuideTour userRole="admin" />
+        </div>
 
         {/* Tab Navigation */}
-        <TabNav tabs={tabs as TabConfig[]} activeId={activeTab} onChange={(id) => setActiveTab(id as any)} />
+        <div className="tab-nav">
+          <TabNav tabs={tabs as TabConfig[]} activeId={activeTab} onChange={(id) => setActiveTab(id as any)} />
+        </div>
+
+        {/* Tab-specific Tour Controls */}
+        <TabTourManager activeTab={activeTab} userRole="admin" />
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+          <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="overview-stats">
             <h2 style={{ fontSize: 18, marginBottom: 16 }}>System Overview</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }} className="kpi-stats">
               <KPIStat label="Active Batches" value={overviewStats?.activeBatches ?? '—'} color="var(--primary)" />
               <KPIStat label="Total Users" value={overviewStats?.totalUsers?.toLocaleString?.() ?? '—'} color="#28a745" />
               <KPIStat label="Completion Rate" value={overviewStats ? `${overviewStats.completionRate}%` : '—'} color="#ffc107" />
@@ -883,9 +929,13 @@ const AdminPanel: React.FC = () => {
           </div>
         )}
 
-  {activeTab === 'settings' && <AdminSettings canEdit={!!(isSuperAdmin || perms?.manageSettings)} />}
+  {activeTab === 'settings' && (
+    <div className="settings-section">
+      <AdminSettings canEdit={!!(isSuperAdmin || perms?.manageSettings)} />
+    </div>
+  )}
   {activeTab === 'policies' && (
-          <div style={{ display: 'grid', gap: 16 }}>
+          <div className="policies-section" style={{ display: 'grid', gap: 16 }}>
             <div className="card" style={{ padding: 16 }}>
               <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Recurring Policies</h3>
               <div className="small muted" style={{ marginBottom: 8 }}>Define annual or recurring acknowledgements at the document level; applies to all employees by default.</div>
@@ -896,7 +946,7 @@ const AdminPanel: React.FC = () => {
               </React.Suspense>
             </div>
             {(isSuperAdmin || perms?.manageSettings) && (
-              <div className="card" style={{ padding: 16 }}>
+              <div className="card consent-reports-card" style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Consent Reports</h3>
@@ -954,7 +1004,7 @@ const AdminPanel: React.FC = () => {
         )}
 
         {activeTab === 'manage' && (
-          <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'grid', gap: 16 }} className="manage-section">
             {/* Import Templates quick actions */}
             <div className="card" style={{ padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -963,21 +1013,12 @@ const AdminPanel: React.FC = () => {
                   <div className="small muted">Download enterprise-ready templates for bulk operations.</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn sm" onClick={downloadAllTemplatesExcel} title="Download a workbook containing all import templates">All (Excel)</button>
-                  <button className="btn ghost xs" onClick={downloadExternalUsersTemplateExcel}>External Users (Excel)</button>
-                  <button className="btn ghost xs" onClick={downloadExternalUsersTemplateCsv}>External Users (CSV)</button>
+                  {/* Users-related templates moved to Users tab */}
                   <button className="btn ghost xs" onClick={downloadBusinessesTemplateExcel}>Businesses (Excel)</button>
                   <button className="btn ghost xs" onClick={downloadBusinessesTemplateCsv}>Businesses (CSV)</button>
                 </div>
               </div>
             </div>
-            {(externalSupport && (isSuperAdmin || perms?.manageRoles || perms?.manageRecipients)) && (
-              <div className="card" style={{ padding: 16 }}>
-                <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>External Users</h3>
-                <div className="small muted" style={{ marginBottom: 8 }}>Invite, bulk upload, update, disable, or delete external users.</div>
-                <ExternalUsersManager canEdit={!!(isSuperAdmin || perms?.manageRecipients)} />
-              </div>
-            )}
             <div className="card" style={{ padding: 16 }}>
               <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Batches</h3>
               <div className="small muted" style={{ marginBottom: 8 }}>View, edit, or delete batches. Deleting a batch removes its documents, recipients, and acknowledgements.</div>
@@ -998,8 +1039,69 @@ const AdminPanel: React.FC = () => {
         )}
 
   {activeTab === 'notificationEmails' && <NotificationEmailsTab />}
+  {activeTab === 'users' && (
+          <div className="users-section" style={{ display: 'grid', gap: 16 }}>
+            {/* Header + Subtabs */}
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18 }}>Users</h3>
+                  <div className="small muted">Manage internal (AAD) users, guests, and access controls.</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <TabNav tabs={usersTabs as TabConfig[]} activeId={usersSubtab} onChange={(id) => setUsersSubtab(id as any)} />
+              </div>
+            </div>
+
+            {/* Pane: Directory */}
+            {usersSubtab==='directory' && (
+              <div className="card" style={{ padding: 16 }}>
+                <UsersManagement canManageExternal={false} />
+              </div>
+            )}
+
+            {/* Pane: Guests */}
+            {usersSubtab==='guests' && !!(externalSupport && (isSuperAdmin || perms?.manageRecipients || perms?.manageRoles)) && (
+              <div className="card" style={{ padding: 16 }}>
+                <ExternalUsersManager canEdit={true} />
+              </div>
+            )}
+
+            {/* Pane: Roles */}
+            {usersSubtab==='roles' && (isSuperAdmin || perms?.manageRoles) && (
+              <div className="card" style={{ padding: 16 }}>
+                <RolesManager canEdit={!!(isSuperAdmin || perms?.manageRoles)} isSuperAdmin={isSuperAdmin} />
+              </div>
+            )}
+
+            {/* Pane: Permissions */}
+            {usersSubtab==='permissions' && (isSuperAdmin || perms?.managePermissions) && (
+              <div className="card" style={{ padding: 16 }}>
+                <RBACMatrix />
+              </div>
+            )}
+
+            {/* Pane: Imports */}
+            {usersSubtab==='imports' && (
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Import Templates</h3>
+                    <div className="small muted">Download external users templates for invite/update workflows.</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn sm" onClick={downloadAllTemplatesExcel} title="Download a workbook containing all import templates">All (Excel)</button>
+                    <button className="btn ghost xs" onClick={downloadExternalUsersTemplateExcel}>External Users (Excel)</button>
+                    <button className="btn ghost xs" onClick={downloadExternalUsersTemplateCsv}>External Users (CSV)</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
   {activeTab === 'rbac' && (
-          <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'grid', gap: 16 }} className="rbac-section">
             {(isSuperAdmin || perms?.manageRoles) && (
               <div className="card" style={{ padding: 16 }}>
                 <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Roles</h3>
@@ -1023,7 +1125,8 @@ const AdminPanel: React.FC = () => {
         )}
 
         {activeTab === 'batch' && (
-          <BatchEditor
+          <div className="batch-section">
+            <BatchEditor
             isSuperAdmin={isSuperAdmin}
             canUploadDocuments={!!(isSuperAdmin || perms?.uploadDocuments)}
             sqliteEnabled={sqliteEnabled}
@@ -1058,6 +1161,7 @@ const AdminPanel: React.FC = () => {
             removeSelectedDoc={removeSelectedDoc}
             saveBatch={saveBatch}
           />
+          </div>
         )}
 
         {activeTab === 'diagnostics' && isSuperAdmin && (
@@ -1123,6 +1227,22 @@ const AdminPanel: React.FC = () => {
               </div>
             </div>
 
+            {/* Environment & Feature Flags */}
+            <div className="card environment-card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Environment & Feature Flags</div>
+                  <div className="small muted">Read-only snapshot of key runtime toggles.</div>
+                </div>
+              </div>
+              <div className="small" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', rowGap: 4, columnGap: 8, marginTop: 8 }}>
+                <div>SQLite Enabled</div><div>{isSQLiteEnabled() ? 'true' : 'false'}</div>
+                <div>API Base</div><div>{String(getApiBase() || '—')}</div>
+                <div>Admin Light Mode</div><div>{isAdminLight() ? 'true' : 'false'}</div>
+                <div>Modal Selectors (default)</div><div>{adminModalSelectorsDefault() ? 'true' : 'false'}</div>
+              </div>
+            </div>
+
             {/* Permissions Status (Required Microsoft Graph scopes) */}
             <div className="card" style={{ padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1160,6 +1280,18 @@ const AdminPanel: React.FC = () => {
 
             {/* Tools */}
             <div className="small muted" style={{ fontWeight: 600 }}>Tools</div>
+            <div className="card" style={{ padding: 16, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Admin Utilities</h3>
+                  <div className="small muted">Seed local data or request core Graph permissions.</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn ghost sm" onClick={grantCorePermissions}>Grant Core Permissions</button>
+                  <button className="btn ghost sm" onClick={seedSqliteForMe}>Seed SQLite (for me)</button>
+                </div>
+              </div>
+            </div>
             {/* Debug Logs */}
             <div className="card" style={{ padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1179,17 +1311,7 @@ const AdminPanel: React.FC = () => {
                     <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Seed Data</h3>
                     <div className="small muted">Insert demo data for local testing.</div>
                   </div>
-                  <button className="btn ghost sm" onClick={async () => {
-                    try {
-                      const base = (getApiBase() as string);
-                      const email = account?.username || 'seed.user@sunbeth.com';
-                      const res = await fetch(`${base}/api/seed?email=${encodeURIComponent(email)}`, { method: 'POST' });
-                      if (!res.ok) throw new Error('seed_failed');
-                      showToast('Seeded demo data', 'success');
-                    } catch {
-                      showToast('Seed failed', 'error');
-                    }
-                  }}>Run Seed</button>
+                  <button className="btn ghost sm" onClick={seedSqliteForMe}>Run Seed</button>
                 </div>
               </div>
             )}
@@ -1205,89 +1327,103 @@ const AdminPanel: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'analytics' && <AnalyticsDashboard />}
+        {activeTab === 'analytics' && (
+          <div className="analytics-section">
+            <AnalyticsDashboard />
+          </div>
+        )}
+
+        {activeTab === 'library' && (
+          <div className="library-section">
+            <DocumentLibraryManager />
+          </div>
+        )}
       </div>
 
       {/* Health Modal */}
       {/* Selectors Modals */}
       {useModalSelectors && (
         <>
-          <Modal open={usersModalOpen} onClose={() => setUsersModalOpen(false)} title="Assign to Users & Groups" width={800}>
+          <Modal open={usersModalOpen} onClose={() => setUsersModalOpen(false)} title="Assign to Users & Groups" width={800} className="users-groups-modal">
             <UserGroupSelector onSelectionChange={(selection) => setBatchForm({...batchForm, selectedUsers: selection.users, selectedGroups: selection.groups})} />
           </Modal>
-          <Modal open={docsModalOpen} onClose={() => setDocsModalOpen(false)} title="Documents" width={920}>
+          <Modal open={docsModalOpen} onClose={() => setDocsModalOpen(false)} title="Documents" width={920} className="documents-modal">
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
               <div style={{ display: 'grid', gap: 16 }}>
-              {/* Import progress banner (modal) */}
-              {importBusy && (
-                <div className="small" style={{ background: '#fff8e1', border: '1px solid #ffe0b2', padding: 8, borderRadius: 6 }}>
-                  Importing to Library... {importDone}/{importTotal}
-                  <div className="progressBar" aria-hidden="true" style={{ marginTop: 6 }}><i style={{ width: `${importTotal ? Math.round((importDone/importTotal)*100) : 0}%` }} /></div>
-                  {importRows.length > 0 && (
-                    <div style={{ marginTop: 6, maxHeight: 120, overflowY: 'auto', display: 'grid', gap: 4 }}>
-                      {importRows.map((r, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                          <span className="badge" style={{ background: r.status==='failed'?'#f8d7da':(r.status==='deduped'?'#e2e3e5':'#d4edda'), color: '#333' }}>{r.status}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <LocalLibraryPicker onAdd={(docs) => setBatchForm(prev => ({
-                ...prev,
-                selectedDocuments: mergeDocuments(prev.selectedDocuments, docs)
-              }))} />
-              <SharePointBrowser canUpload={!!(isSuperAdmin || perms?.uploadDocuments)} onDocumentSelect={async (spDocs) => {
-                try {
-                  const base = (getApiBase() as string) || '';
-                  const token = await getGraphToken(['Sites.Read.All','Files.Read.All']);
-                  setImportBusy(true); setImportTotal(spDocs.length); setImportDone(0); setImportRows([]);
-                  const imported: SimpleDoc[] = [];
-                  let dedupedCount = 0, failed = 0;
-                  for (const d of spDocs) {
-                    const driveId = (d as any)?.parentReference?.driveId;
-                    const itemId = (d as any)?.id;
-                    const name = d.name;
-                    if (!base || !driveId || !itemId || !token) {
-                      imported.push({ title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint' });
-                      setImportDone(v => v + 1);
-                      setImportRows(rows => [...rows, { name, status: 'failed' }]);
-                      failed++;
-                      continue;
-                    }
-                    try {
-                      const res = await fetch(`${base}/api/library/save-graph`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ driveId, itemId, name }) });
-                      const j = await res.json().catch(() => null);
-                      const localUrl = j?.url ? `${base}${j.url}` : undefined;
-                      // Keep SharePoint link as canonical url; localUrl for server backup
-                      const doc: SimpleDoc = { title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint', localFileId: j?.id ?? null, localUrl: localUrl || null };
-                      imported.push(doc);
-                      setImportRows(rows => [...rows, { name, status: j?.deduped ? 'deduped' : 'saved' }]);
-                      if (j?.deduped) dedupedCount++;
-                    } catch {
-                      imported.push({ title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint', localFileId: null, localUrl: null });
-                      setImportRows(rows => [...rows, { name, status: 'failed' }]);
-                      failed++;
-                    } finally {
-                      setImportDone(v => v + 1);
-                    }
-                  }
-                  setBatchForm(prev => ({ ...prev, selectedDocuments: mergeDocuments(prev.selectedDocuments, imported) }));
-                  showToast(`Imported ${imported.length - failed} • deduped ${dedupedCount}${failed ? ` • failed ${failed}` : ''}`, failed ? 'warning' : 'success');
-                } catch (e) {
-                  setBatchForm(prev => ({
+                {/* Import progress banner (modal) */}
+                {importBusy && (
+                  <div className="small" style={{ background: '#fff8e1', border: '1px solid #ffe0b2', padding: 8, borderRadius: 6 }}>
+                    Importing to Library... {importDone}/{importTotal}
+                    <div className="progressBar" aria-hidden="true" style={{ marginTop: 6 }}><i style={{ width: `${importTotal ? Math.round((importDone/importTotal)*100) : 0}%` }} /></div>
+                    {importRows.length > 0 && (
+                      <div style={{ marginTop: 6, maxHeight: 120, overflowY: 'auto', display: 'grid', gap: 4 }}>
+                        {importRows.map((r, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                            <span className="badge" style={{ background: r.status==='failed'?'#f8d7da':(r.status==='deduped'?'#e2e3e5':'#d4edda'), color: '#333' }}>{r.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="docs-modal-library">
+                  <LocalLibraryPicker onAdd={(docs) => setBatchForm(prev => ({
                     ...prev,
-                    selectedDocuments: mergeDocuments(prev.selectedDocuments, spDocs.map(d => ({ title: d.name, url: d.webUrl, version: 1, requiresSignature: false, driveId: (d as any)?.parentReference?.driveId, itemId: (d as any)?.id, source: 'sharepoint' })))
-                  }));
-                } finally {
-                  setImportBusy(false);
-                }
-              }} />
+                    selectedDocuments: mergeDocuments(prev.selectedDocuments, docs)
+                  }))} />
+                </div>
+                <div className="docs-modal-sharepoint">
+                  <SharePointBrowser canUpload={!!(isSuperAdmin || perms?.uploadDocuments)} onDocumentSelect={async (spDocs) => {
+                    try {
+                      const base = (getApiBase() as string) || '';
+                      const token = await getGraphToken(['Sites.Read.All','Files.Read.All']);
+                      setImportBusy(true); setImportTotal(spDocs.length); setImportDone(0); setImportRows([]);
+                      const imported: SimpleDoc[] = [];
+                      let dedupedCount = 0, failed = 0;
+                      for (const d of spDocs) {
+                        const driveId = (d as any)?.parentReference?.driveId;
+                        const itemId = (d as any)?.id;
+                        const name = d.name;
+                        if (!base || !driveId || !itemId || !token) {
+                          imported.push({ title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint' });
+                          setImportDone(v => v + 1);
+                          setImportRows(rows => [...rows, { name, status: 'failed' }]);
+                          failed++;
+                          continue;
+                        }
+                        try {
+                          const res = await fetch(`${base}/api/library/save-graph`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ driveId, itemId, name }) });
+                          const j = await res.json().catch(() => null);
+                          const localUrl = j?.url ? `${base}${j.url}` : undefined;
+                          // Keep SharePoint link as canonical url; localUrl for server backup
+                          const doc: SimpleDoc = { title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint', localFileId: j?.id ?? null, localUrl: localUrl || null };
+                          imported.push(doc);
+                          setImportRows(rows => [...rows, { name, status: j?.deduped ? 'deduped' : 'saved' }]);
+                          if (j?.deduped) dedupedCount++;
+                        } catch {
+                          imported.push({ title: name, url: d.webUrl, version: 1, requiresSignature: false, driveId, itemId, source: 'sharepoint', localFileId: null, localUrl: null });
+                          setImportRows(rows => [...rows, { name, status: 'failed' }]);
+                          failed++;
+                        } finally {
+                          setImportDone(v => v + 1);
+                        }
+                      }
+                      setBatchForm(prev => ({ ...prev, selectedDocuments: mergeDocuments(prev.selectedDocuments, imported) }));
+                      showToast(`Imported ${imported.length - failed} • deduped ${dedupedCount}${failed ? ` • failed ${failed}` : ''}`, failed ? 'warning' : 'success');
+                    } catch (e) {
+                      setBatchForm(prev => ({
+                        ...prev,
+                        selectedDocuments: mergeDocuments(prev.selectedDocuments, spDocs.map(d => ({ title: d.name, url: d.webUrl, version: 1, requiresSignature: false, driveId: (d as any)?.parentReference?.driveId, itemId: (d as any)?.id, source: 'sharepoint' })))
+                      }));
+                    } finally {
+                      setImportBusy(false);
+                    }
+                  }} />
+                </div>
               </div>
               {/* Right column: persistent selection panel */}
-              <div className="card" style={{ padding: 12 }}>
+              <div className="card docs-modal-selected" style={{ padding: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>Selected Documents</div>
@@ -1366,9 +1502,9 @@ const AdminPanel: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {/* Batch Creation Debug Console */}
-      <BatchCreationDebug 
+      <BatchCreationDebug
         isVisible={showDebugConsole}
         onClose={() => setShowDebugConsole(false)}
       />
@@ -1384,4 +1520,4 @@ const BusinessesBulkUploadSection: React.FC = () => {
 };
 
 export default AdminPanel;
- 
+

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useEffect, useState } from 'react';
 import { useAuth as useAuthCtx } from '../../context/AuthContext';
 import {
@@ -99,7 +100,7 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
   };
 
   return (
-    <div style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 16 }}>
+    <div className="ugs" style={{ border: '1px solid #e0e0e0', borderRadius: 8, padding: 16 }}>
       <h3 style={{ margin: '0 0 16px 0', fontSize: 16 }}>Assign to Users & Groups</h3>
       <div style={{ marginBottom: 12 }}>
         {!account && (
@@ -117,11 +118,11 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
       </div>
       
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid #e0e0e0' }}>
+      <div className="ugs-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid #e0e0e0' }}>
         {(['users', 'groups', 'structure'] as const).map(t => (
           <button 
             key={t}
-            className={tab === t ? 'btn sm' : 'btn ghost sm'}
+            className={`${tab === t ? 'btn sm' : 'btn ghost sm'} ${t === 'users' ? 'ugs-tab-users' : t === 'groups' ? 'ugs-tab-groups' : 'ugs-tab-structure'}`}
             onClick={() => setTab(t)}
           >
             {t === 'users' ? `Users (${users.length})` : t === 'groups' ? `Groups (${groups.length})` : 'Filters'}
@@ -133,10 +134,11 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
 
       {/* Filters Tab */}
       {tab === 'structure' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="ugs-filters-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="small">Search:</label>
             <input 
+              className="ugs-users-search"
               type="text" 
               placeholder="Name, email..." 
               value={localSearch}
@@ -182,10 +184,11 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
 
       {/* Users Tab */}
       {tab === 'users' && (
-        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+        <div className="ugs-users-list" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {/* Users search */}
           <div style={{ marginBottom: 12 }}>
             <input 
+              className="ugs-users-search"
               type="text"
               placeholder="Search users (name or email)"
               value={localSearch}
@@ -194,9 +197,9 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
             />
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button className="btn ghost sm" onClick={() => setSelectedUsers(new Set(users.map(u => u.id)))}>Select All</button>
-            <button className="btn ghost sm" onClick={() => setSelectedUsers(new Set())}>Clear</button>
-            <span className="small muted">Selected: {selectedUsers.size}</span>
+            <button className="btn ghost sm ugs-users-select-all" onClick={() => setSelectedUsers(new Set(users.map(u => u.id)))}>Select All</button>
+            <button className="btn ghost sm ugs-users-clear" onClick={() => setSelectedUsers(new Set())}>Clear</button>
+            <span className="small muted ugs-users-selected-count">Selected: {selectedUsers.size}</span>
           </div>
           {users.slice(0, usersPage * pageSize).map(user => (
             <div
@@ -229,10 +232,11 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
 
       {/* Groups Tab */}
       {tab === 'groups' && (
-        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+        <div className="ugs-groups-list" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {/* Groups search (client-side filter) */}
           <div style={{ marginBottom: 12 }}>
             <input 
+              className="ugs-groups-search"
               type="text"
               placeholder="Search groups"
               value={groupSearch}
@@ -241,9 +245,9 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
             />
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button className="btn ghost sm" onClick={() => setSelectedGroups(new Set(groups.map(g => g.id)))}>Select All</button>
-            <button className="btn ghost sm" onClick={() => setSelectedGroups(new Set())}>Clear</button>
-            <span className="small muted">Selected: {selectedGroups.size}</span>
+            <button className="btn ghost sm ugs-groups-select-all" onClick={() => setSelectedGroups(new Set(groups.map(g => g.id)))}>Select All</button>
+            <button className="btn ghost sm ugs-groups-clear" onClick={() => setSelectedGroups(new Set())}>Clear</button>
+            <span className="small muted ugs-groups-selected-count">Selected: {selectedGroups.size}</span>
           </div>
           {groups
             .filter(g => {

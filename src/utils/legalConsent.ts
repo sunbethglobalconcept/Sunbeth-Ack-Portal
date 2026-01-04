@@ -47,7 +47,7 @@ async function sendConsentReceipt(userEmail?: string | null, batchId?: string | 
 // eslint-disable-next-line complexity, max-lines-per-function
 export async function requestConsentIfNeeded(userEmail?: string | null, batchId?: string | null): Promise<boolean> {
   if (hasConsent(userEmail, batchId)) return true;
-  const title = 'Court-certified acknowledgement consent';
+  const title = 'Employee Attestation - Legal Acknowledgement';
   // Try to load current legal document metadata from server
   let previewUrl: string | null = null;
   try {

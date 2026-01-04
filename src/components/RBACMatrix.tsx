@@ -196,22 +196,22 @@ const RBACMatrix: React.FC = () => {
   }, [perms]);
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, borderBottom: '1px solid #eee' }}>
+    <div className="rbac-matrix">
+      <div className="rbac-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12, borderBottom: '1px solid #eee' }}>
         <button className={tab==='role'?'btn sm':'btn ghost sm'} onClick={() => setTab('role')}>By Role</button>
         <button className={tab==='user'?'btn sm':'btn ghost sm'} onClick={() => setTab('user')}>By User</button>
       </div>
 
       {tab === 'role' && (
-        <div style={{ display: 'grid', gap: 16 }}>
-          <div className="card" style={{ padding: 12 }}>
+        <div className="role-management" style={{ display: 'grid', gap: 16 }}>
+          <div className="card role-creator" style={{ padding: 12 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input placeholder="New role name" value={newRole} onChange={e => setNewRole(e.target.value)} />
               <button className="btn sm" onClick={addRole}>Add Role</button>
             </div>
             <div className="small muted" style={{ marginTop: 6 }}>Tip: After adding a role, set its permissions below and click Save for that role.</div>
           </div>
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card role-admin" style={{ padding: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Role administration</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -243,7 +243,7 @@ const RBACMatrix: React.FC = () => {
             <div key={cat}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>{cat}</div>
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ minWidth: 600 }}>
+                <table className="table permissions-table" style={{ minWidth: 600 }}>
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Permission</th>
@@ -282,8 +282,8 @@ const RBACMatrix: React.FC = () => {
       )}
 
       {tab === 'user' && (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="user-management" style={{ display: 'grid', gap: 12 }}>
+          <div className="user-selector" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input type="email" placeholder="user@domain.com" value={userEmail} onChange={e => setUserEmail(e.target.value)} />
             <button className="btn sm" onClick={() => loadUser(userEmail)} disabled={busy}>Load</button>
             {knownUsers.length > 0 && (
@@ -299,7 +299,7 @@ const RBACMatrix: React.FC = () => {
             )}
           </div>
           {/* Directory search to find users quickly */}
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card user-search" style={{ padding: 12 }}>
             <div className="small" style={{ marginBottom: 8 }}>Search directory</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
               <input placeholder="Search by name or email" value={search} onChange={e => setSearch(e.target.value)} />
@@ -339,7 +339,7 @@ const RBACMatrix: React.FC = () => {
             )}
           </div>
           {perms.length > 0 && (
-            <div style={{ display: 'grid', gap: 12 }}>
+            <div className="user-permissions" style={{ display: 'grid', gap: 12 }}>
               {Object.keys(grouped).map(cat => (
                 <div key={cat}>
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>{cat}</div>

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines, max-lines-per-function, complexity, max-depth, @typescript-eslint/no-unused-vars */
 import React, { useEffect, useState } from 'react';
 import { useRBAC } from '../context/RBACContext';
 import { exportAnalyticsExcel } from '../utils/excelExport';
@@ -42,16 +43,16 @@ interface DocumentStats {
 }
 
 // KPI Card Component
-const KPICard: React.FC<{ title: string; value: string | number; change?: string; color?: string; icon?: string }> = ({ 
-  title, value, change, color = 'var(--primary)', icon = '📊' 
+const KPICard: React.FC<{ title: string; value: string | number; change?: string; color?: string; icon?: string }> = ({
+  title, value, change, color = 'var(--primary)', icon = '📊'
 }) => (
   <div className="card" style={{ padding: 20, textAlign: 'center', background: 'linear-gradient(135deg, #fff 0%, #f8f9fa 100%)' }}>
     <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
     <div style={{ fontSize: 28, fontWeight: 'bold', color, marginBottom: 4 }}>{value}</div>
     <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>{title}</div>
     {change && (
-      <div style={{ 
-        fontSize: 12, 
+      <div style={{
+        fontSize: 12,
         color: change.startsWith('+') ? '#28a745' : change.startsWith('-') ? '#dc3545' : '#666',
         fontWeight: 500
       }}>
@@ -63,11 +64,11 @@ const KPICard: React.FC<{ title: string; value: string | number; change?: string
 
 // Chart Component (simplified)
 const SimpleChart: React.FC<{ data: any[]; type: 'line' | 'bar'; height?: number }> = ({ data, type, height = 200 }) => (
-  <div style={{ 
-    height, 
-    border: '1px solid #e0e0e0', 
-    borderRadius: 8, 
-    padding: 16, 
+  <div style={{
+    height,
+    border: '1px solid #e0e0e0',
+    borderRadius: 8,
+    padding: 16,
     background: '#f8f9fa',
     display: 'flex',
     alignItems: 'center',
@@ -81,8 +82,8 @@ const SimpleChart: React.FC<{ data: any[]; type: 'line' | 'bar'; height?: number
 );
 
 // Data Table Component
-const DataTable: React.FC<{ data: any[]; columns: Array<{ key: string; label: string; format?: (val: any) => string }> }> = ({ 
-  data, columns 
+const DataTable: React.FC<{ data: any[]; columns: Array<{ key: string; label: string; format?: (val: any) => string }> }> = ({
+  data, columns
 }) => (
   <div style={{ overflowX: 'auto' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -159,12 +160,12 @@ const FilterPanel: React.FC<{ onFilterChange: (filters: any) => void; liveOption
   };
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      gap: 16, 
-      padding: 16, 
-      backgroundColor: '#f8f9fa', 
-      borderRadius: 8, 
+    <div style={{
+      display: 'flex',
+      gap: 16,
+      padding: 16,
+      backgroundColor: '#f8f9fa',
+      borderRadius: 8,
       marginBottom: 24,
       flexWrap: 'wrap'
     }}>
@@ -249,11 +250,11 @@ const AnalyticsDashboard: React.FC = () => {
   const [recipients, setRecipients] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const sqliteEnabled = (process.env.REACT_APP_ENABLE_SQLITE === 'true') && !!process.env.REACT_APP_API_BASE;
-  const apiBase = sqliteEnabled ? (process.env.REACT_APP_API_BASE as string).replace(/\/$/, '') : '';
   const getApiBases = () => {
     const envBase = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
-    // @ts-ignore window dynamic hints from runtime or index.html
-    const hinted = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE)) ? String((window as any).__API_BASE__ || (window as any).API_BASE).replace(/\/$/, '') : '';
+    const hinted = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE))
+      ? String((window as any).__API_BASE__ || (window as any).API_BASE).replace(/\/$/, '')
+      : '';
     const local = 'http://127.0.0.1:4000';
     return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
   };
@@ -277,6 +278,48 @@ const AnalyticsDashboard: React.FC = () => {
   const [docPage, setDocPage] = useState(1);
   const docPageSize = 10;
   const { account } = useAuth();
+
+  // Export full acknowledgement report (business + user + batch + document details)
+  const exportAckReport = async () => {
+    try {
+      const q: string[] = [];
+      const bf = (filters as any).businessId; if (bf && bf !== 'all') q.push(`businessId=${encodeURIComponent(bf)}`);
+      const df = (filters as any).department; if (df && df !== 'all') q.push(`department=${encodeURIComponent(df)}`);
+      const gf = (filters as any).group; if (gf && gf !== 'all') q.push(`primaryGroup=${encodeURIComponent(gf)}`);
+      const qs = q.length ? `?${q.join('&')}` : '';
+      const res = await tryFetchJson(`/api/ack-report${qs ? `${qs}&` : '?'}limit=5000`);
+      const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      if (!items.length) return;
+      const headers = [
+        'year','ackId','businessId','businessName','batchId','batchName','batchCreatedAt','dueDate','documentId','documentTitle','documentVersion','documentSource','documentUrl','email','displayName','department','primaryGroup','acknowledged','acknowledgedAt'
+      ];
+      const normalized = items.map((r: any) => ({
+        year: r.acknowledgedAt ? new Date(r.acknowledgedAt).getFullYear() : new Date().getFullYear(),
+        ackId: r.ackId ?? '',
+        businessId: r.businessId ?? '',
+        businessName: r.businessName ?? '',
+        batchId: r.batchId ?? '',
+        batchName: r.batchName ?? '',
+        batchCreatedAt: r.batchCreatedAt ?? '',
+        dueDate: r.dueDate ?? '',
+        documentId: r.documentId ?? '',
+        documentTitle: r.documentTitle ?? '',
+        documentVersion: r.documentVersion ?? '',
+        documentSource: r.documentSource ?? '',
+        documentUrl: r.documentUrl ?? '',
+        email: r.email ?? '',
+        displayName: r.displayName ?? '',
+        department: r.department ?? '',
+        primaryGroup: r.primaryGroup ?? '',
+        acknowledged: r.acknowledged ?? '',
+        acknowledgedAt: r.acknowledgedAt ?? ''
+      }));
+      const csv = toCSV(normalized, headers);
+      download('acknowledgements_report.csv', csv);
+    } catch (e) {
+      console.warn('Ack report export failed', e);
+    }
+  };
 
   const loadAnalyticsData = async () => {
     setLoading(true);
@@ -336,7 +379,13 @@ const AnalyticsDashboard: React.FC = () => {
             documents: docs
           };
           setData(live);
-          try { (window as any).__analyticsData = { ...live, __recipients: Array.isArray(recRes) ? recRes : [] }; } catch {}
+          if (typeof window !== 'undefined') {
+            try {
+              (window as any).__analyticsData = { ...live, __recipients: Array.isArray(recRes) ? recRes : [] };
+            } catch (err) {
+              /* ignore window assignment errors */
+            }
+          }
           setLoading(false);
           return;
       } catch (e) {
@@ -344,7 +393,13 @@ const AnalyticsDashboard: React.FC = () => {
           kpis: { totalBatches: 0, activeBatches: 0, totalUsers: 0, completionRate: 0, overdueBatches: 0, avgCompletionTime: 0, lastUpdated: new Date().toISOString() },
           compliance: [], trends: [], documents: []
         });
-        try { (window as any).__analyticsData = null; } catch {}
+        if (typeof window !== 'undefined') {
+          try {
+            (window as any).__analyticsData = null;
+          } catch (err) {
+            /* ignore window clear errors */
+          }
+        }
         setLoading(false);
         return;
       }
@@ -356,6 +411,7 @@ const AnalyticsDashboard: React.FC = () => {
 
   useEffect(() => {
     loadAnalyticsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   if (loading) {
@@ -391,7 +447,7 @@ const AnalyticsDashboard: React.FC = () => {
           <p className="small muted">Last updated: {new Date(data.kpis.lastUpdated).toLocaleString()}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} className="year-selector">
             <label htmlFor="report-year" className="small muted">Year:</label>
             <select id="report-year" className="form-control" value={reportYear}
               onChange={e => setReportYear(Number(e.target.value))}>
@@ -402,10 +458,13 @@ const AnalyticsDashboard: React.FC = () => {
           </div>
           <button className="btn ghost sm" onClick={() => loadAnalyticsData()}>🔄 Refresh</button>
           <button className="btn ghost sm">📋 Schedule Report</button>
-          {(isSuperAdmin || (perms && (perms as any).exportAnalytics)) && (
-            <button className="btn sm" onClick={async () => { try { await exportAnalyticsExcel({ year: reportYear, adminEmail: account?.username }); } catch (e) { console.warn('Excel export failed', e); } }}>📘 Export Excel</button>
-          )}
-          <button className="btn sm" onClick={async () => { try { await exportAnalyticsCsvFull({ year: reportYear, adminEmail: account?.username }); } catch (e) { console.warn('CSV export failed', e); } }}>📤 Export CSV</button>
+          <div className="export-buttons" style={{ display: 'flex', gap: 8 }}>
+            {(isSuperAdmin || (perms && (perms as any).exportAnalytics)) && (
+              <button className="btn sm" onClick={async () => { try { await exportAnalyticsExcel({ year: reportYear, adminEmail: account?.username }); } catch (e) { console.warn('Excel export failed', e); } }}>📘 Export Excel</button>
+            )}
+            <button className="btn sm" onClick={async () => { try { await exportAnalyticsCsvFull({ year: reportYear, adminEmail: account?.username }); } catch (e) { console.warn('CSV export failed', e); } }}>📤 Export CSV</button>
+            <button className="btn sm" onClick={exportAckReport}>📑 Export Ack Report</button>
+          </div>
         </div>
       </div>
 
@@ -482,11 +541,11 @@ const AnalyticsDashboard: React.FC = () => {
                   { key: 'completed', label: 'Completed', format: (val) => safeNum(val).toLocaleString() },
                   { key: 'pending', label: 'Pending', format: (val) => safeNum(val).toLocaleString() },
                   { key: 'overdue', label: 'Overdue', format: (val) => safeNum(val).toLocaleString() },
-                  { 
-                    key: 'completionRate', 
-                    label: 'Completion Rate', 
+                  {
+                    key: 'completionRate',
+                    label: 'Completion Rate',
                     format: (val) => (
-                      <span style={{ 
+                      <span style={{
                         color: safeNum(val) >= 90 ? '#28a745' : safeNum(val) >= 75 ? '#ffc107' : '#dc3545',
                         fontWeight: 'bold'
                       }}>
@@ -549,7 +608,7 @@ const AnalyticsDashboard: React.FC = () => {
               .filter(d => !docSearch || String(d.documentName||'').toLowerCase().includes(docSearch.toLowerCase()) || String(d.batchName||'').toLowerCase().includes(docSearch.toLowerCase()));
             const { items } = paginate(filtered, docPage, docPageSize);
             return (
-              <DataTable 
+              <DataTable
                 data={items}
                 columns={[
                   { key: 'documentName', label: 'Document' },
@@ -578,16 +637,16 @@ const AnalyticsDashboard: React.FC = () => {
             const labelUser = activity.user || 'System';
             const labelDoc = activity.document || activity.batch || '';
             return (
-              <div key={i} style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 12, 
-                padding: 12, 
-                backgroundColor: '#f8f9fa', 
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: 12,
+                backgroundColor: '#f8f9fa',
                 borderRadius: 6,
                 borderLeft: `4px solid ${
-                  type === 'success' ? '#28a745' : 
-                  type === 'warning' ? '#ffc107' : 
+                  type === 'success' ? '#28a745' :
+                  type === 'warning' ? '#ffc107' :
                   type === 'info' ? '#17a2b8' : '#6c757d'
                 }`
               }}>
@@ -595,14 +654,14 @@ const AnalyticsDashboard: React.FC = () => {
                 <div style={{ flex: 1 }}>
                   <strong>{labelUser}</strong> {activity.action} {labelDoc && (<em>{labelDoc}</em>)}
                 </div>
-                <div style={{ 
-                  fontSize: 10, 
-                  padding: '2px 6px', 
-                  backgroundColor: type === 'success' ? '#d4edda' : 
-                                  type === 'warning' ? '#fff3cd' : 
+                <div style={{
+                  fontSize: 10,
+                  padding: '2px 6px',
+                  backgroundColor: type === 'success' ? '#d4edda' :
+                                  type === 'warning' ? '#fff3cd' :
                                   type === 'info' ? '#d1ecf1' : '#e2e3e5',
-                  color: type === 'success' ? '#155724' : 
-                         type === 'warning' ? '#856404' : 
+                  color: type === 'success' ? '#155724' :
+                         type === 'warning' ? '#856404' :
                          type === 'info' ? '#0c5460' : '#383d41',
                   borderRadius: 4,
                   textTransform: 'uppercase',
@@ -635,26 +694,4 @@ function download(filename: string, content: string, mime = 'text/csv;charset=ut
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
 }
 
-function exportCsv(this: any) {
-  try {
-    // @ts-ignore - access component state via closure when bound
-    const data = (window as any).__analyticsData as any;
-    if (!data) { console.warn('No analytics data to export'); return; }
-    // Recipients (if present)
-    if (Array.isArray(data.__recipients) && data.__recipients.length > 0) {
-      const rows = data.__recipients.map((r: any) => ({
-        displayName: r.displayName || r.toba_DisplayName || r.email || r.toba_Email,
-        email: r.email || r.toba_Email,
-        department: r.department || r.toba_Department || '',
-        group: r.primaryGroup || r.toba_PrimaryGroup || ''
-      }));
-      const csv = toCSV(rows, ['displayName','email','department','group']);
-      download('recipients.csv', csv);
-    }
-    // Document performance
-    if (Array.isArray(data.documents) && data.documents.length > 0) {
-      const csv = toCSV(data.documents, ['documentName','batchName','totalAssigned','acknowledged','pending','avgTimeToComplete']);
-      download('documents.csv', csv);
-    }
-  } catch (e) { console.warn('CSV export failed', e); }
-}
+// legacy exportCsv removed (unused)

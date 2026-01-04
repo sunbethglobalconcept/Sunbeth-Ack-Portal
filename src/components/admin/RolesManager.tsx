@@ -170,9 +170,9 @@ const RolesManager: React.FC<{ canEdit: boolean; isSuperAdmin: boolean }> = ({ c
 
   if (!sqliteEnabled) return <div className="small muted">Enable SQLite to manage roles.</div>;
   return (
-    <div>
+    <div className="roles-manager">
       {/* Directory user search and quick-assign */}
-      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+      <div className="card user-directory-search" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 700 }}>Find users</div>

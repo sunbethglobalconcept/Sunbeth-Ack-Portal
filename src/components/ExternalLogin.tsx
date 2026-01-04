@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useExternalAuth } from '../context/ExternalAuthContext';
+import { apiPost } from '../services/api';
 
 const ExternalLogin: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -22,13 +24,9 @@ const ExternalLogin: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch('/api/external-users/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const j = await apiPost('/api/external-users/login', { email, password }).catch((err) => {
+        throw new Error(String(err?.message || 'Login failed'));
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || 'Login failed');
       if (j?.mfaRequired) {
         navigate(`/mfa?email=${encodeURIComponent(email)}`);
         return;
@@ -87,6 +85,42 @@ const ExternalLogin: React.FC = () => {
               </div>
 
               <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #f2f2f2' }} />
+
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div className="small muted">Or continue with Google</div>
+                <div>
+                  <GoogleOAuthProvider clientId={String(process.env.REACT_APP_GOOGLE_CLIENT_ID || '')}>
+                    <GoogleLogin
+                      onSuccess={async (cred) => {
+                        try {
+                          const idToken = (cred as any)?.credential;
+                          if (!idToken) throw new Error('Missing credential');
+                          // Frontend-only Google auth, similar to MSAL flow
+                          const parts = String(idToken).split('.');
+                          if (parts.length < 2) throw new Error('Invalid Google token');
+                          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+                          const json = atob(b64);
+                          const payload = JSON.parse(json || '{}');
+                          const email = String(payload?.email || '').toLowerCase();
+                          const name =
+                            (payload?.name as string) ||
+                            `${payload?.given_name || ''} ${payload?.family_name || ''}`.trim() ||
+                            null;
+                          if (!email) throw new Error('Google account missing email');
+                          setExternalSession({ email, name });
+                          navigate('/');
+                        } catch (err: any) {
+                          setError(String(err?.message || 'Google sign-in failed'));
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      onError={() => setError('Google sign-in failed')}
+                      useOneTap
+                    />
+                  </GoogleOAuthProvider>
+                </div>
+              </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="small" style={{ color: 'var(--muted-2)' }}>Are you an internal employee?</div>

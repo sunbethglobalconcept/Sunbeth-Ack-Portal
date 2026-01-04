@@ -8,6 +8,7 @@ type ModalProps = {
   children?: React.ReactNode;
   width?: number | string;
   maxWidth?: number | string;
+  className?: string;
 };
 
 const ensurePortalRoot = () => {
@@ -25,7 +26,7 @@ const ensurePortalRoot = () => {
 };
 
 // eslint-disable-next-line max-lines-per-function
-const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, width = 640, maxWidth = '90%' }) => {
+const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, width = 640, maxWidth = '90%', className }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isSmall = useMemo(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false), []);
   useEffect(() => {
@@ -87,7 +88,7 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, width = 6
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-static-element-interactions */}
       <div
         ref={containerRef}
-        className="card"
+        className={`card ${className || ''}`.trim()}
         style={{
           width: isSmall ? '90vw' : width,
           maxWidth: isSmall ? '90vw' : maxWidth,

@@ -18,6 +18,7 @@ import LoginGateway from './components/LoginGateway';
 import ExternalLogin from './components/ExternalLogin';
 import Logout from './components/Logout';
 import ModulesHub from './components/ModulesHub';
+import VerifyCertificate from './components/VerifyCertificate';
 const SuperAdminConsole = React.lazy(() => import('./components/SuperAdminConsole'));
 
 export const AppRoutes: React.FC = () => {
@@ -52,6 +53,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/admin" element={<AdminGuard><AdminPanel /></AdminGuard>} />
   <Route path="/super-admin" element={<SuperAdminGuard><React.Suspense fallback={null}><SuperAdminConsole /></React.Suspense></SuperAdminGuard>} />
       <Route path="/logout" element={<Logout />} />
+      <Route path="/verify/certificate/:id" element={<VerifyCertificate />} />
     </Routes>
   );
 };

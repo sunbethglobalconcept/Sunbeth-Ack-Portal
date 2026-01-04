@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function, complexity, @typescript-eslint/no-empty-function, max-depth */
 /**
  * BatchDetail: Lists documents for a selected batch.
  *
@@ -7,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useExternalAuth } from '../context/ExternalAuthContext';
 import { getDocumentsByBatch, getAcknowledgedDocIds, getUserProgress } from '../services/dbService';
 import type { Doc } from '../types/models';
 import { requestConsentIfNeeded } from '../utils/legalConsent';
@@ -14,6 +16,7 @@ import { requestConsentIfNeeded } from '../utils/legalConsent';
 const BatchDetail: React.FC = () => {
   const { id } = useParams();
   const { token, account } = useAuth();
+  const { user: externalUser } = useExternalAuth();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -27,12 +30,12 @@ const BatchDetail: React.FC = () => {
       if (!id) { setConsentReady(true); return; }
       try {
         // If completed, skip consent requirement
-        const p = await getUserProgress(id, token ?? undefined, undefined, account?.username || undefined);
+        const p = await getUserProgress(id, token ?? undefined, undefined, (account?.username || externalUser?.email || undefined));
         if (p?.percent >= 100) { setConsentReady(true); return; }
       } catch { /* ignore and continue to consent */ }
 
       try {
-        const ok = await requestConsentIfNeeded(account?.username || undefined, id);
+        const ok = await requestConsentIfNeeded((account?.username || externalUser?.email || undefined), id);
         if (!ok) {
           navigate('/');
           return;
@@ -48,13 +51,13 @@ const BatchDetail: React.FC = () => {
               return;
             }
           }
-        } catch {}
+  } catch { /* ignore */ }
       } catch {
         // If consent flow fails unexpectedly, be safe and return to dashboard
         navigate('/');
       }
     })();
-  }, [id, token, account?.username, navigate]);
+  }, [id, token, account?.username, externalUser?.email, navigate]);
 
   useEffect(() => {
     if (!id) return;
@@ -66,7 +69,7 @@ const BatchDetail: React.FC = () => {
         setDocs(list);
         setError(null);
         // fetch acknowledged doc ids for current user
-        const acks = await getAcknowledgedDocIds(id, token ?? undefined, account?.username || undefined);
+        const acks = await getAcknowledgedDocIds(id, token ?? undefined, (account?.username || externalUser?.email || undefined));
         setAckIds(acks);
       } catch {
         setDocs([]);
@@ -74,7 +77,7 @@ const BatchDetail: React.FC = () => {
       } finally { setLoading(false); }
     };
     run();
-  }, [token, id, account?.username, consentReady]);
+  }, [token, id, account?.username, externalUser?.email, consentReady]);
 
   return (
     <div className="container">
@@ -89,7 +92,7 @@ const BatchDetail: React.FC = () => {
         <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #f4f4f4' }} />
 
         {loading ? (
-          <div className="doc-list">
+          <div className="doc-list document-list">
             <div className="doc-row">
               <div className="doc-meta">
                 <div className="skeleton circle" />
@@ -116,7 +119,7 @@ const BatchDetail: React.FC = () => {
             <div className="muted">{error ? error : 'No documents found.'}</div>
           </div>
         ) : (
-          <div className="doc-list">
+          <div className="doc-list document-list">
             {docs.map((d: Doc, i: number) => (
               <div key={d.toba_documentid} className="doc-row">
                 <div className="doc-meta">

@@ -70,15 +70,16 @@ const determineRole = (userEmail: string, groups: string[]): RBAC['role'] => {
 // eslint-disable-next-line max-lines-per-function, complexity
 export const RBACProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const { token, account } = useAuth();
+  const DEV_USER = (process.env.REACT_APP_DEV_USER_EMAIL || '').trim().toLowerCase();
   const [role, setRole] = useState<RBAC['role']>('Employee');
   const [perms, setPerms] = useState<Record<string, boolean>>({});
 
   // Fetch DB roles (if enabled) and then groups when token is available
   // eslint-disable-next-line max-lines-per-function, complexity
   useEffect(() => {
-    if (!token || !account) { setRole('Employee'); return; }
     let active = true;
-    const userEmail = account.username || '';
+    const userEmail = (account?.username || DEV_USER || '').toLowerCase();
+    if (!token && !account && !DEV_USER) { setRole('Employee'); return () => { active = false; }; }
 
   /* eslint-disable complexity */
   (async () => {
@@ -109,13 +110,15 @@ export const RBACProvider: React.FC<{children: React.ReactNode}> = ({ children }
       }
 
       // Then check group-based roles as final fallback
-      try {
-        const groups = await fetchUserGroups(token);
-        if (!active) return;
-        const finalRole = determineRole(userEmail, groups);
-        setRole(finalRole);
-      } catch {
-        if (active && !userEmail) setRole('Employee');
+      if (token && account) {
+        try {
+          const groups = await fetchUserGroups(token);
+          if (!active) return;
+          const finalRole = determineRole(userEmail, groups);
+          setRole(finalRole);
+        } catch {
+          if (active && !userEmail) setRole('Employee');
+        }
       }
   })();
   /* eslint-enable complexity */
@@ -128,7 +131,7 @@ export const RBACProvider: React.FC<{children: React.ReactNode}> = ({ children }
     let cancelled = false;
   /* eslint-disable complexity */
   (async () => {
-      const email = account?.username || '';
+      const email = (account?.username || DEV_USER || '').toLowerCase();
       try {
         // If API is available, try to load effective permissions from backend
         if (getApiBase() !== null && email) {

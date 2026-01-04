@@ -14,113 +14,88 @@ const triggerDownload = (filename: string, content: string, mime = 'text/csv;cha
 type ExportOpts = { year?: number | string, adminEmail?: string };
 
 /**
- * Export core datasets to CSV files mirroring the Excel export and include acknowledgements:
- * - batches.csv
- * - documents.csv
- * - recipients.csv
- * - acknowledgements.csv (yearly, legal consent timestamp included)
+ * Export a single CSV with full acknowledgement detail (business + user + batch + document).
  */
 export const exportAnalyticsCsvFull = async (opts: ExportOpts = {}) => {
-  const sqliteEnabled = (process.env.REACT_APP_ENABLE_SQLITE === 'true') && !!process.env.REACT_APP_API_BASE;
-  if (!sqliteEnabled) {
-    throw new Error('SQLite API must be enabled to export analytics');
-  }
-  const base = (process.env.REACT_APP_API_BASE as string).replace(/\/$/, '');
+  const getApiBases = () => {
+    const envBase = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
+    const hinted = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE))
+      ? String((window as any).__API_BASE__ || (window as any).API_BASE).replace(/\/$/, '')
+      : '';
+    const local = 'http://127.0.0.1:4000';
+    return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
+  };
+  const tryFetchJson = async (path: string) => {
+    const bases = getApiBases();
+    let lastErr: any = null;
+    for (const b of bases) {
+      try {
+        const r = await fetch(`${b}${path}`);
+        if (r.ok) return await r.json();
+      } catch (e) { lastErr = e; }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error('All API base candidates failed: ' + bases.join(', '));
+  };
   const year = String((opts.year ?? new Date().getFullYear()));
   const adminEmail = String(opts.adminEmail || '').trim().toLowerCase();
-
-  const [batchesRes, recRes] = await Promise.all([
-    fetch(`${base}/api/batches`),
-    fetch(`${base}/api/recipients`)
-  ]);
-  const batches = await batchesRes.json().catch(() => []);
-  const recipients = await recRes.json().catch(() => []);
-
-  const docsRows: any[] = [];
-  for (const b of (Array.isArray(batches) ? batches : [])) {
-    const id = String((b.toba_batchid || b.id));
-    if (!id) continue;
-    try {
-      const dRes = await fetch(`${base}/api/batches/${encodeURIComponent(id)}/documents`);
-      const rows = await dRes.json();
-      for (const d of (Array.isArray(rows) ? rows : [])) {
-        docsRows.push({ batchId: id, ...d });
+  // Recipient map to enrich acknowledgement rows
+  const recipients = await tryFetchJson('/api/recipients').catch(() => []);
+  const recKey = (batchId: any, email: any) => `${String(batchId)}::${String(email || '').toLowerCase()}`;
+  const recMap = new Map(
+    (Array.isArray(recipients) ? recipients : []).map((r: any) => [
+      recKey(r.batchId, r.email || r.user),
+      {
+        displayName: r.displayName || '',
+        department: r.department || '',
+        primaryGroup: r.primaryGroup || '',
+        jobTitle: r.jobTitle || '',
+        location: r.location || '',
+        businessId: r.businessId != null ? String(r.businessId) : ''
       }
-    } catch {}
-  }
+    ])
+  );
 
-  const batchRows = (Array.isArray(batches) ? batches : []).map((r: any) => ({
-    id: String(r.toba_batchid || r.id),
-    name: String(r.toba_name || r.name || ''),
-    startDate: r.toba_startdate || r.startDate || '',
-    dueDate: r.toba_duedate || r.dueDate || '',
-    status: r.toba_status != null ? String(r.toba_status) : (r.status != null ? String(r.status) : ''),
-    description: r.description || ''
-  }));
-
-  const docRows = docsRows.map((d: any) => ({
-    id: String(d.toba_documentid || d.id || ''),
-    batchId: String(d.batchId || d.toba_batchid || ''),
-    title: String(d.toba_title || d.title || ''),
-    url: String(d.toba_fileurl || d.url || ''),
-    version: Number(d.toba_version || d.version || 1),
-    requiresSignature: (d.toba_requiressignature ?? d.requiresSignature) ? true : false,
-    driveId: d.toba_driveid || d.driveId || '',
-    itemId: d.toba_itemid || d.itemId || '',
-    source: d.toba_source || d.source || ''
-  }));
-
-  const recRows = (Array.isArray(recipients) ? recipients : []).map((r: any) => ({
-    id: Number(r.id),
-    batchId: Number(r.batchId),
-    businessId: r.businessId != null ? Number(r.businessId) : '',
-    email: String(r.email || r.user || ''),
-    displayName: String(r.displayName || ''),
-    department: r.department || '',
-    jobTitle: r.jobTitle || '',
-    location: r.location || '',
-    primaryGroup: r.primaryGroup || ''
-  }));
-
-  const batchesCsv = toCsv(batchRows, ['id','name','startDate','dueDate','status','description']);
-  const documentsCsv = toCsv(docRows, ['id','batchId','title','url','version','requiresSignature','driveId','itemId','source']);
-  const recipientsCsv = toCsv(recRows, ['id','batchId','businessId','email','displayName','department','jobTitle','location','primaryGroup']);
-
-  triggerDownload(`batches-${year}.csv`, batchesCsv);
-  triggerDownload(`documents-${year}.csv`, documentsCsv);
-  triggerDownload(`recipients-${year}.csv`, recipientsCsv);
-
-  // Acknowledgements
+  // Acknowledgements (single CSV: business + user + batch + document)
   try {
-    const url = `${base}/api/admin/acks/export?year=${encodeURIComponent(year)}`;
-    const headers: any = {};
-    if (adminEmail) headers['x-admin-email'] = adminEmail;
-    const res = await fetch(url, { headers });
-    if (res.ok) {
-      const json = await res.json().catch(() => ({} as any));
-      const rows = Array.isArray(json.records) ? json.records : [];
-      if (rows.length > 0) {
-        const headersList = ['year','batchId','batchName','documentId','documentTitle','email','displayName','department','jobTitle','location','primaryGroup','businessId','acknowledgedAt','legalConsentedAt'];
-        const csv = toCsv(rows.map((r: any) => ({
-          year: String(r.year || year),
-          batchId: String(r.batchId || ''),
-          batchName: String(r.batchName || ''),
-          documentId: String(r.documentId || ''),
-          documentTitle: String(r.documentTitle || ''),
-          email: String(r.email || ''),
-          displayName: String(r.displayName || ''),
-          department: r.department || '',
-          jobTitle: r.jobTitle || '',
-          location: r.location || '',
-          primaryGroup: r.primaryGroup || '',
-          businessId: r.businessId != null ? Number(r.businessId) : '',
-          acknowledgedAt: String(r.acknowledgedAt || ''),
-          legalConsentedAt: String(r.legalConsentedAt || '')
-        })), headersList);
-        triggerDownload(`acknowledgements-${year}.csv`, csv);
-      }
-    }
+    const ackRes = await tryFetchJson('/api/ack-report?limit=5000');
+    const rows = Array.isArray((ackRes as any)?.items) ? (ackRes as any).items : Array.isArray(ackRes) ? ackRes : [];
+    const headersList = [
+      'year','ackId','acknowledged','acknowledgedAt','businessId','businessName','batchId','batchName','batchCreatedAt','dueDate','documentId','documentTitle','documentVersion','documentSource','documentUrl','email','displayName','department','primaryGroup','jobTitle','location'
+    ];
+    const csv = toCsv(rows.map((r: any) => ({
+      year: String(year),
+      ackId: String(r.ackId || ''),
+      acknowledged: r.acknowledged ?? '',
+      acknowledgedAt: String(r.acknowledgedAt || ''),
+      businessId: r.businessId != null ? String(r.businessId) : (recMap.get(recKey(r.batchId, r.email))?.businessId || ''),
+      businessName: String(r.businessName || ''),
+      batchId: String(r.batchId || ''),
+      batchName: String(r.batchName || ''),
+      batchCreatedAt: String(r.batchCreatedAt || ''),
+      dueDate: String(r.dueDate || ''),
+      documentId: String(r.documentId || ''),
+      documentTitle: String(r.documentTitle || ''),
+      documentVersion: r.documentVersion != null ? Number(r.documentVersion) : '',
+      documentSource: String(r.documentSource || ''),
+      documentUrl: String(r.documentUrl || ''),
+      email: String(r.email || ''),
+      displayName: String(r.displayName || recMap.get(recKey(r.batchId, r.email))?.displayName || ''),
+      department: r.department || recMap.get(recKey(r.batchId, r.email))?.department || '',
+      primaryGroup: r.primaryGroup || recMap.get(recKey(r.batchId, r.email))?.primaryGroup || '',
+      jobTitle: recMap.get(recKey(r.batchId, r.email))?.jobTitle || '',
+      location: recMap.get(recKey(r.batchId, r.email))?.location || ''
+    })), headersList);
+    triggerDownload(`acknowledgements-${year}.csv`, csv);
+    return;
   } catch (e) {
     console.warn('Acknowledgements export failed or unavailable', e);
   }
+
+  // Even if empty or failed, download a headers-only CSV to make the action predictable
+  const headersList = [
+    'year','ackId','acknowledged','acknowledgedAt','businessId','businessName','batchId','batchName','batchCreatedAt','dueDate','documentId','documentTitle','documentVersion','documentSource','documentUrl','email','displayName','department','primaryGroup','jobTitle','location'
+  ];
+  const csv = toCsv([], headersList);
+  triggerDownload(`acknowledgements-${year}.csv`, csv);
 };

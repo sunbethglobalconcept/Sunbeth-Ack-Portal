@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 /**
  * Notification Service (Microsoft Graph based)
  *
@@ -11,7 +12,7 @@
  *   Teams DM (optional): Chat.ReadWrite
  */
 import { getGraphToken } from './authTokens';
-import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor } from '../utils/runtimeConfig';
+import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getApiBase } from '../utils/runtimeConfig';
 
 type Recipient = { address: string; name?: string };
 type MailOptions = { cc?: Recipient[]; bcc?: Recipient[] };
@@ -26,6 +27,7 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
  * Send a single email message to up to ~100 recipients at a time (chunked internally)
  * using the signed-in user as the sender (me/sendMail).
  */
+// eslint-disable-next-line complexity
 export const sendEmail = async (
   recipients: Recipient[],
   subject: string,
@@ -75,6 +77,7 @@ export const sendEmail = async (
  * - Conservative caps: max 8 attachments or ~15 MB total per message
  * - Messages are labeled with “(part i of n)” when chunked
  */
+// eslint-disable-next-line complexity
 export const sendEmailWithAttachmentChunks = async (
   recipients: Recipient[],
   subject: string,
@@ -116,7 +119,8 @@ export const sendEmailWithAttachmentChunks = async (
 
   // Multiple parts
   for (let i = 0; i < chunks.length; i++) {
-    const part = chunks[i]!;
+    const part = chunks[i];
+    if (!part) continue;
     const partSubject = `${subject} (part ${i + 1} of ${chunks.length})`;
     const partBody = `${htmlBody}<div style="margin-top:12px;color:#666;font-size:12px">Attachments: part ${i + 1} of ${chunks.length}</div>`;
     await sendEmail(recipients, partSubject, partBody, part, options);
@@ -158,7 +162,7 @@ export const sendTeamsDirectMessage = async (
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: { content: text } })
-    }).catch(() => {});
+    }).catch(() => { void 0; });
   }
 };
 
@@ -171,6 +175,9 @@ export const buildBatchEmail = (opts: {
   startDate?: string;
   dueDate?: string;
   description?: string;
+  // Optional extras are accepted but intentionally ignored to keep pre-ack emails document-free
+  documents?: Array<{ title?: string; url?: string }>;
+  senderDisplayName?: string;
 }): { subject: string; bodyHtml: string } => {
   const brand = getBrandName();
   const logo = getBrandLogoUrl();
@@ -257,6 +264,7 @@ export const buildBatchCompletionEmail = (opts: {
   return { subject, bodyHtml };
 };
 
+
 /**
  * Helper: fetch a URL (same-origin or via proxy) and return base64 content for Graph fileAttachment
  */
@@ -272,7 +280,88 @@ export const fetchAsBase64 = async (url: string): Promise<{ contentBytes: string
   return { contentBytes, contentType: ct };
 };
 
+/** Generate a certificate PDF via backend and return base64 */
+export const generateCertificatePdf = async (payload: {
+  batchName: string;
+  userEmail: string;
+  userName?: string;
+  completedOn?: string;
+  documents?: string[];
+  department?: string;
+  jobTitle?: string;
+  location?: string;
+  businessName?: string;
+  primaryGroup?: string;
+  verifyUrl?: string;
+  certificateId?: string;
+  pageSize?: 'a4' | 'quarter';
+}): Promise<{ name: string; contentBytes: string; contentType: string }> => {
+  const base = getApiBase() as string;
+  // Ensure logo URL is absolute so backend can fetch it
+  const rawLogo = getBrandLogoUrl();
+  const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
+  const res = await fetch(`${base}/api/certificates/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      brandName: getBrandName(),
+      brandLogoUrl: absLogo,
+      brandPrimaryColor: getBrandPrimaryColor(),
+    })
+  });
+  if (!res.ok) throw new Error(`Certificate PDF failed: ${res.status}`);
+  const j = await res.json();
+  return {
+    name: String(j?.name || `certificate-${payload.userEmail || 'user'}.pdf`),
+    contentBytes: String(j?.contentBytes || ''),
+    contentType: String(j?.contentType || 'application/pdf')
+  };
+};
+
+/** Generate a certificate PNG via backend and return base64 */
+export const generateCertificatePng = async (payload: {
+  batchName: string;
+  userEmail: string;
+  userName?: string;
+  completedOn?: string;
+  department?: string;
+  jobTitle?: string;
+  location?: string;
+  businessName?: string;
+  primaryGroup?: string;
+  verifyUrl?: string;
+  certificateId?: string;
+  pageSize?: 'a4' | 'quarter';
+}): Promise<{ name: string; contentBytes: string; contentType: string }> => {
+  const base = getApiBase() as string;
+  const res = await fetch(`${base}/api/certificates/png`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      brandName: getBrandName(),
+      brandPrimaryColor: getBrandPrimaryColor(),
+    })
+  });
+  if (!res.ok) throw new Error(`Certificate PNG failed: ${res.status}`);
+  const j = await res.json().catch(async () => {
+    // In case server streams binary (future), fallback to arrayBuffer
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return { name: 'certificate.png', contentBytes: btoa(binary), contentType: 'image/png' };
+  });
+  return {
+    name: String(j?.name || `certificate-${payload.userEmail || 'user'}.png`),
+    contentBytes: String(j?.contentBytes || ''),
+    contentType: String(j?.contentType || 'image/png')
+  };
+};
+
 /** Build completion email for a single user's completion of a batch */
+// eslint-disable-next-line max-lines-per-function
 export const buildUserCompletionEmail = (opts: {
   appUrl: string;
   batchName: string;
@@ -280,6 +369,7 @@ export const buildUserCompletionEmail = (opts: {
   userName?: string;
   completedOn?: string;
   totalDocuments?: number;
+  documents?: string[];
   department?: string;
   jobTitle?: string;
   location?: string;
@@ -290,6 +380,10 @@ export const buildUserCompletionEmail = (opts: {
   const logo = getBrandLogoUrl();
   const primary = getBrandPrimaryColor();
   const subject = `Batch Completion Notification: ${opts.batchName}`;
+  const docs = (opts.documents || []).map(d => String(d || 'Document'));
+  const docsHtml = docs.length > 0
+    ? `<ol style="margin:12px 0 0 22px;color:#333">${docs.map(t => `<li>${t}</li>`).join('')}</ol>`
+    : '<div style="margin:12px 0 0 0;color:#666">Documents list unavailable.</div>';
   const bodyHtml = `
     <div style="background:#f7f8fa;padding:24px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e9ecef;border-radius:10px;overflow:hidden">
@@ -317,6 +411,8 @@ export const buildUserCompletionEmail = (opts: {
               ${opts.businessName ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Business:</td><td style="padding:4px 0">${opts.businessName}</td></tr>` : ''}
               ${opts.primaryGroup ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Primary group:</td><td style="padding:4px 0">${opts.primaryGroup}</td></tr>` : ''}
             </table>
+            <h3 style="margin:12px 0 8px 0;font-size:14px;color:#111">Documents Acknowledged</h3>
+            ${docsHtml}
             <p style="margin:0 0 12px 0">You may review the batch and user details in the Acknowledgement Portal.</p>
             <p style="margin:16px 0 0 0">
               <a href="${opts.appUrl}" target="_blank" rel="noopener" style="display:inline-block;background:${primary};color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px;font-weight:600">Open Portal</a>

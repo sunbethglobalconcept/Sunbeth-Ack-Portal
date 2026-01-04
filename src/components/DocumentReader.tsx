@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function, complexity */
 // DocumentReader split into presentational parts and hooks; remaining warnings will be addressed incrementally.
 /**
  * DocumentReader: Displays a single document within a batch and handles acknowledgement.
@@ -9,6 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useExternalAuth } from '../context/ExternalAuthContext';
 // flow submission and busy indicators are handled inside useAcceptHandler
 import Toast from './Toast';
 import HeaderBar from './documentReader/HeaderBar';
@@ -17,6 +19,7 @@ import GraphAccessHint from './documentReader/GraphAccessHint';
 import ViewerFrame from './documentReader/ViewerFrame';
 import ActionLinks from './documentReader/ActionLinks';
 import AcceptControls from './documentReader/AcceptControls';
+import { apiGet, apiPut } from '../services/api';
 import NavControls from './documentReader/NavControls';
 import { getApiBase as getApiBaseCfg } from '../utils/runtimeConfig';
 import { hasConsent } from '../utils/legalConsent';
@@ -30,7 +33,8 @@ import { useViewerDecision } from './documentReader/hooks/useViewerDecision';
 
 const DocumentReader: React.FC = () => {
   const { id } = useParams();
-  const { account, token, getToken } = useAuth();
+  const { account, token, getToken, login } = useAuth();
+  const { user: externalUser } = useExternalAuth();
   const [ack, setAck] = useState(false);
   const title = useMemo(() => `Document ${id}`, [id]);
   const navigate = useNavigate();
@@ -45,18 +49,33 @@ const DocumentReader: React.FC = () => {
     alreadyAcked,
     ackCheckReady,
     setProgressText,
-  } = useBatchAndProgress(id, batchIdFromQuery, token ?? undefined, account?.username || undefined);
-  const userName = (account?.name || account?.username || '').toString();
+  } = useBatchAndProgress(id, batchIdFromQuery, token ?? undefined, (account?.username || externalUser?.email || undefined));
+  const userName = (account?.name || account?.username || externalUser?.name || externalUser?.email || '').toString();
   const [refreshKey, setRefreshKey] = useState<number>(0);
+  const [businesses, setBusinesses] = useState<Array<{ id: number | string; name: string }>>([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState<number | string | null>(null);
 
-  
+  // Load businesses list for selector
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const r = await apiGet<any>(`/api/businesses/active`);
+        const list = Array.isArray(r?.businesses) ? r.businesses : (Array.isArray(r) ? r : []);
+        if (mounted) setBusinesses(list);
+      } catch { /* ignore fetch errors; selector will remain empty */ }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+
 
   const { onAccept, toastMsg, showToast } = useAcceptHandler({
     ack,
     id,
     title,
-    username: account?.username || undefined,
-    displayName: account?.name || undefined,
+    username: (account?.username || externalUser?.email || undefined),
+    displayName: (account?.name || externalUser?.name || externalUser?.email || undefined),
     batchIdFromQuery,
     index,
     docs,
@@ -64,6 +83,21 @@ const DocumentReader: React.FC = () => {
     navigate,
     setProgressText,
   });
+
+  // Intercept onAccept to persist selected business before sending acknowledgement
+  const handleAccept = async () => {
+    if (!ack || !selectedBusinessId) return; // guarded by UI, but double-check
+    try {
+      const email = (account?.username || externalUser?.email || '').toString();
+      if (email && selectedBusinessId) {
+        // Best-effort persist; ignore failures so user isn't blocked
+        try {
+          await apiPut(`/api/users/${encodeURIComponent(email)}/business`, { businessId: selectedBusinessId });
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+    onAccept();
+  };
 
   // loaded via useBatchAndProgress
 
@@ -79,7 +113,7 @@ const DocumentReader: React.FC = () => {
     const t = await getToken(scopes);
     return t === null ? undefined : t;
   }) : undefined;
-  const { docUrl, backupUrl, needGraphAuth } = useDocUrlResolution(currentDoc, apiBase, getTokenAdapter, refreshKey);
+  const { docUrl, needGraphAuth } = useDocUrlResolution(currentDoc, apiBase, getTokenAdapter, refreshKey);
   const contentType = useContentTypeProbe(docUrl, apiBase);
 
   // resolved via useDocUrlResolution
@@ -87,22 +121,47 @@ const DocumentReader: React.FC = () => {
   // content-type probing via useContentTypeProbe
   // const docTitle = currentDoc?.toba_title || `Document ${id}`;
   // Determine viewer by URL extension or content-type (set by diagnostics)
-  const { isPdf, isDocx, proxiedDownloadUrl, openInNewTabUrl, viewerUrls } = useViewerDecision(rawUrl, docUrl, contentType, backupUrl);
+  const { isPdf, isDocx, proxiedDownloadUrl, openInNewTabUrl, viewerUrls } = useViewerDecision(rawUrl, docUrl, contentType);
 
   const originalUrl = (currentDoc as any)?.toba_originalurl as string | undefined;
 
   return (
     <div className="container">
       <div className="card">
-        <HeaderBar title={title} />
-        <ConsentBanner show={!!(batchIdFromQuery && !hasConsent(account?.username || undefined, batchIdFromQuery))} />
+  <HeaderBar title={title} />
+  <ConsentBanner show={!!(batchIdFromQuery && !hasConsent((account?.username || externalUser?.email || undefined), batchIdFromQuery))} />
         <GraphAccessHint
           visible={needGraphAuth}
-          onGrant={async () => { try { await getToken?.(['Files.Read.All','Sites.Read.All']); setRefreshKey(k => k + 1); } catch (e) { /* noop */ } }}
+          onGrant={async () => {
+            try {
+              // If not already authenticated with Microsoft, trigger MSAL login
+              if (!account) {
+                await login();
+              }
+              await getToken?.(['Files.Read.All','Sites.Read.All']);
+              setRefreshKey(k => k + 1);
+            } catch (e) { /* noop */ }
+          }}
         />
         <ViewerFrame isPdf={isPdf} isDocx={isDocx} viewerUrls={viewerUrls} docUrl={docUrl} needGraphAuth={needGraphAuth} />
-        <ActionLinks docUrl={docUrl} openInNewTabUrl={openInNewTabUrl} proxiedDownloadUrl={proxiedDownloadUrl} originalUrl={originalUrl} />
-        <AcceptControls ready={ackCheckReady} alreadyAcked={alreadyAcked} userName={userName} ack={ack} onAckChange={setAck} onAccept={onAccept} />
+        <ActionLinks
+          docUrl={docUrl || ''}
+          openInNewTabUrl={openInNewTabUrl || ''}
+          proxiedDownloadUrl={proxiedDownloadUrl || ''}
+          originalUrl={originalUrl}
+          selectedBusinessName={(businesses.find(b => String(b.id) === String(selectedBusinessId)) || undefined)?.name}
+        />
+        <AcceptControls
+          ready={ackCheckReady}
+          alreadyAcked={alreadyAcked}
+          userName={userName}
+          ack={ack}
+          onAckChange={setAck}
+          onAccept={handleAccept}
+          businesses={businesses}
+          selectedBusinessId={selectedBusinessId}
+          onBusinessChange={(bid) => setSelectedBusinessId(bid)}
+        />
         <NavControls onPrev={prevDoc} onNext={nextDoc} progressText={progressText} />
         <Toast message={toastMsg} show={showToast} />
       </div>

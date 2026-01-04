@@ -1,13 +1,12 @@
 /* eslint-disable max-lines-per-function */
 import React, { useEffect, useState } from 'react';
-import { getApiBase, isSQLiteEnabled } from '../../utils/runtimeConfig';
+import { getApiBase } from '../../utils/runtimeConfig';
 import { confirmDialog, showToast } from '../../utils/alerts';
-import { createBusiness, deleteBusiness, updateBusiness } from '../../services/dbService';
+import { createBusiness, deleteBusiness, updateBusiness, getBusinesses } from '../../services/dbService';
 
 type Biz = { id: string; name: string; code?: string; isActive?: boolean; description?: string };
 
 const apiBase = () => (getApiBase() as string) || '';
-const sqliteOn = () => isSQLiteEnabled() && !!apiBase();
 
 const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   const [items, setItems] = useState<Biz[]>([]);
@@ -16,11 +15,10 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   const [editRow, setEditRow] = useState<Record<string, Partial<Biz>>>({});
 
   const load = async () => {
-    if (!sqliteOn()) return;
     try {
-      const res = await fetch(`${apiBase()}/api/businesses`);
-      const j = await res.json();
-      setItems(Array.isArray(j) ? j : []);
+      // Use unified data service to handle both API shapes
+      const list = await getBusinesses();
+      setItems(Array.isArray(list) ? list as any : []);
     } catch {
       setItems([]);
     }
@@ -28,7 +26,7 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!canEdit || !sqliteOn()) return;
+    if (!canEdit || !apiBase()) return;
     const name = form.name.trim(); if (!name) { showToast('Enter a business name', 'warning'); return; }
     setBusy(true);
     try {
@@ -46,7 +44,7 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   };
 
   const save = async (id: string) => {
-    if (!canEdit || !sqliteOn()) return;
+    if (!canEdit || !apiBase()) return;
     const row = editRow[id]; if (!row) return;
     setBusy(true);
     try {
@@ -59,7 +57,7 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   };
 
   const del = async (id: string) => {
-    if (!canEdit || !sqliteOn()) return;
+    if (!canEdit || !apiBase()) return;
     const ok = await confirmDialog('Delete this business?', 'This will unassign it from any recipients.', 'Delete', 'Cancel', { icon: 'warning' as any });
     if (!ok) return;
     setBusy(true);
@@ -71,7 +69,7 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
     finally { setBusy(false); }
   };
 
-  if (!sqliteOn()) return <div className="small muted">Enable SQLite to manage businesses.</div>;
+  if (!apiBase()) return <div className="small muted">Backend API not configured.</div>;
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Create form */}

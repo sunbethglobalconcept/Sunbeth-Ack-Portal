@@ -30,6 +30,10 @@ export interface UserSearchFilters {
   jobTitle?: string;
   location?: string;
   search?: string;
+  /** Optional page size ($top). Defaults to 100. */
+  top?: number;
+  /** Optional maximum number of pages to fetch. Defaults to 1 to avoid heavy loads. */
+  maxPages?: number;
 }
 
 /**
@@ -40,14 +44,17 @@ export const getUsers = async (token: string, filters?: UserSearchFilters): Prom
     // Base query with reasonable page size; we will follow @odata.nextLink for pagination
     // NOTE: Graph returns Request_UnsupportedQuery when combining sorting with certain search patterns.
     // To avoid 400 errors, omit $orderby when a search term is used.
-    const baseNoOrder = 'https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,officeLocation,businessPhones,mobilePhone&$top=200';
+    const top = Math.max(1, Math.min(999, (filters?.top ?? 100)));
+    const baseNoOrder = `https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,officeLocation,businessPhones,mobilePhone&$top=${top}`;
     const base = (filters?.search && filters.search.trim()) ? baseNoOrder : `${baseNoOrder}&$orderby=displayName`;
     const escapeOData = (s: string) => s.replace(/'/g, "''");
     const filterStr = filters?.search ? `(startswith(displayName,'${escapeOData(filters.search)}') or startswith(userPrincipalName,'${escapeOData(filters.search)}') or startswith(mail,'${escapeOData(filters.search)}'))` : '';
     let url = filterStr ? `${base}&$filter=${filterStr}` : base;
 
     const users: GraphUser[] = [];
-    while (url) {
+    let pagesFetched = 0;
+    const maxPages = Math.max(1, Math.min(50, (filters?.maxPages ?? 1)));
+    while (url && pagesFetched < maxPages) {
       const response: Response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'ConsistencyLevel': 'eventual' }
       });
@@ -61,6 +68,7 @@ export const getUsers = async (token: string, filters?: UserSearchFilters): Prom
       const page = Array.isArray(data.value) ? (data.value as GraphUser[]) : [];
       users.push(...page);
       url = data['@odata.nextLink'] || '';
+      pagesFetched++;
     }
 
     // Apply client-side filters for better UX
@@ -81,7 +89,7 @@ export const getUsers = async (token: string, filters?: UserSearchFilters): Prom
       filtered = filtered.slice().sort((a, b) => key(a).localeCompare(key(b), undefined, { sensitivity: 'base' }));
     }
 
-    info('graphUserService: fetched users', { count: filtered.length, filters });
+    info('graphUserService: fetched users', { count: filtered.length, pagesFetched, top, filters });
     return filtered;
   } catch (e) {
     logError('graphUserService: failed to fetch users', e);

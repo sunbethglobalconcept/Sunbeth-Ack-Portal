@@ -2,9 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth as useAuthCtx } from '../../context/AuthContext';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
-import Alerts, { alertSuccess, alertError, alertInfo, alertWarning, showToast } from '../../utils/alerts';
-import { getApiBase, isSQLiteEnabled, isAdminLight, useAdminModalSelectors as adminModalSelectorsDefault } from '../../utils/runtimeConfig';
-import { getGraphToken } from '../../services/authTokens';
+import Alerts, { alertSuccess, alertError, alertWarning, showToast } from '../../utils/alerts';
+import { getPrefs as getTourPrefs, setGlobalEnabled as setToursGlobalEnabled, setTourEnabled as setTourEnabledPref, TourId } from '../tours/TourPrefs';
+import { getApiBase } from '../../utils/runtimeConfig';
 
 type AdminSettingsProps = { canEdit: boolean };
 
@@ -30,6 +30,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   // Legal consent document
   const [legalDoc, setLegalDoc] = useState<{ fileId: number | null; url: string | null; name: string | null }>({ fileId: null, url: null, name: null });
   const [legalBusy, setLegalBusy] = useState<boolean>(false);
+  const [reminderBusy, setReminderBusy] = useState<boolean>(false);
+  const [reminderPreview, setReminderPreview] = useState<{ actionable: number; skippedRecent: number; error?: string; enabled?: boolean } | null>(null);
 
   useEffect(() => {
     try {
@@ -40,6 +42,24 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
       }
   } catch { /* ignore */ }
   }, []);
+
+  // Load reminder settings from backend
+  useEffect(() => {
+    (async () => {
+      if (!apiBase) return;
+      try {
+        const res = await fetch(`${apiBase}/api/settings/reminders`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const j = await res.json().catch(() => ({}));
+        setSettings(prev => ({ ...prev, autoReminder: !!j.autoReminder, reminderDays: Number(j.reminderDays) || prev.reminderDays }));
+      } catch { /* ignore */ }
+    })();
+  }, [apiBase]);
+
+  useEffect(() => {
+    void refreshReminderPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.reminderDays, apiBase]);
 
   // Load external support flag
   useEffect(() => {
@@ -80,6 +100,27 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
     }
   };
 
+  const applyAndPersist = async () => {
+    if (!canEdit) return;
+    apply();
+    if (!apiBase) return;
+    try {
+      const res = await fetch(`${apiBase}/api/settings/reminders`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoReminder: settings.autoReminder, reminderDays: settings.reminderDays })
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || 'Failed to save reminder settings');
+      }
+      Alerts.toast('Reminder settings saved');
+      await refreshReminderPreview();
+    } catch (e) {
+      alertWarning('Reminder settings not saved', (e as any)?.message || 'Unknown error');
+    }
+  };
+
   const saveExternalSupport = async (value: boolean) => {
     if (!canEdit || !apiBase) return;
     setExtSaving(true);
@@ -96,45 +137,103 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
     }
   };
 
-  const seedSqliteForMe = async () => {
+  const runRemindersNow = async () => {
+    if (!canEdit || !apiBase) {
+      alertWarning('Not allowed', 'You need edit permissions and API base configured to run reminders.');
+      return;
+    }
+    setReminderBusy(true);
     try {
-      if (!isSQLiteEnabled()) {
-        alertWarning('SQLite disabled', 'Enable SQLite (REACT_APP_ENABLE_SQLITE=true) and set REACT_APP_API_BASE to seed.');
-        return;
+      const body = { days: settings.reminderDays || 3 };
+      const res = await fetch(`${apiBase}/api/reminders/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Run failed (${res.status}): ${text}`);
       }
-      if (!account?.username) {
-        alertInfo('Sign in required', 'Sign in first to seed data for your account.');
-        return;
-      }
-      const base = (getApiBase() as string);
-      const res = await fetch(`${base}/api/seed?email=${encodeURIComponent(account.username)}`, { method: 'POST' });
-      if (!res.ok) throw new Error('Seed failed');
       const j = await res.json().catch(() => ({}));
-      alertSuccess('SQLite seeded', `BatchId: <b>${j?.batchId ?? 'n/a'}</b>`);
-    } catch (e) {
-      alertError('Seed failed', 'Unable to seed demo data.');
+      Alerts.toast(`Reminders sent: ${j?.sent ?? 0}`);
+      await refreshReminderPreview();
+    } catch (e: any) {
+      alertError('Reminder run failed', e?.message || 'Unknown error');
+    } finally {
+      setReminderBusy(false);
     }
   };
 
-  const grantCorePermissions = async () => {
+  const refreshReminderPreview = async () => {
+    if (!apiBase) return;
     try {
-      // Request common scopes used across the Admin feature set
-      // Do these in series to present clearer consent prompts
-      await getGraphToken(['User.Read']);
-      await getGraphToken(['Group.Read.All']);
-      await getGraphToken(['Sites.Read.All','Files.ReadWrite.All']);
-      await getGraphToken(['Mail.Send']);
-      showToast('Core Graph permissions granted');
-    } catch (e) {
-      showToast('Grant permissions failed', 'error');
+      const res = await fetch(`${apiBase}/api/reminders/preview?days=${encodeURIComponent(settings.reminderDays || 3)}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        const cleaned = text ? text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+        throw new Error(cleaned || `status ${res.status}`);
+      }
+      const j = await res.json().catch(() => ({}));
+      setReminderPreview({ actionable: Number(j?.actionable || 0), skippedRecent: Number(j?.skippedRecent || 0), enabled: j?.enabled !== false });
+    } catch (e: any) {
+      setReminderPreview({ actionable: 0, skippedRecent: 0, error: e?.message || 'Preview failed' });
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="settings-container" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <h3 style={{ margin: 0, fontSize: 16 }}>System Settings</h3>
-      {/* External Support Toggle */}
+      {/* Tours & Guides */}
       <div className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div>
+            <div style={{ fontWeight: 700 }}>Tours & Guides</div>
+            <div className="small muted">Enable/disable in-app tours globally or per section.</div>
+          </div>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              defaultChecked={getTourPrefs().globalEnabled}
+              disabled={!canEdit}
+              onChange={e => {
+                setToursGlobalEnabled(e.target.checked);
+                showToast(`Tours ${e.target.checked ? 'enabled' : 'disabled'}`);
+              }}
+            />
+            <span>{getTourPrefs().globalEnabled ? 'Enabled' : 'Disabled'}</span>
+          </label>
+        </div>
+        <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(240px, 1fr))', gap: 8 }}>
+          {(([
+            ['App Welcome', 'appWelcome'],
+            ['User Guide', 'userGuide'],
+            ['Overview', 'overview'],
+            ['Analytics', 'analytics'],
+            ['Batch', 'batch'],
+            ['Manage', 'manage'],
+            ['Policies', 'policies'],
+            ['Settings', 'settings'],
+            ['RBAC', 'rbac']
+          ] as unknown) as [string, TourId][]).map(([label, id]) => {
+            const pref = getTourPrefs();
+            return (
+              <label key={id} className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  defaultChecked={pref.enabled[id] !== false}
+                  disabled={!canEdit || pref.globalEnabled === false}
+                  onChange={e => {
+                    setTourEnabledPref(id, e.target.checked);
+                  }}
+                />
+                <span>{label}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+      {/* External Support Toggle */}
+      <div className="card external-support-card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontWeight: 700 }}>External User Support</div>
@@ -147,7 +246,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
         </div>
       </div>
       {/* Legal Consent Document */}
-      <div className="card" style={{ padding: 16 }}>
+      <div className="card legal-consent-card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 700 }}>Legal Consent Document</div>
@@ -202,22 +301,22 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="grid settings-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={settings.enableUpload} onChange={e => setSettings({...settings, enableUpload: e.target.checked})} disabled={!canEdit} />
           <span className="small">Enable document upload</span>
         </label>
-        
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={settings.requireSig} onChange={e => setSettings({...settings, requireSig: e.target.checked})} disabled={!canEdit} />
           <span className="small">Require digital signatures</span>
         </label>
-        
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={settings.autoReminder} onChange={e => setSettings({...settings, autoReminder: e.target.checked})} disabled={!canEdit} />
           <span className="small">Auto-send reminders</span>
         </label>
-        
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={settings.allowBulkAssignment} onChange={e => setSettings({...settings, allowBulkAssignment: e.target.checked})} disabled={!canEdit} />
           <span className="small">Allow bulk assignments</span>
@@ -234,22 +333,23 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
         </select>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {canEdit && <button className="btn" onClick={apply}>Save Settings</button>}
-        {!canEdit && <span className="small muted">Read-only access</span>}
-        {canEdit && <button className="btn ghost" onClick={seedSqliteForMe} title="Seed SQLite with a demo batch, docs, and recipients for your account">Seed SQLite (for me)</button>}
-        {canEdit && <button className="btn ghost" onClick={grantCorePermissions} title="Request common Microsoft Graph permissions in one go">Grant Core Permissions</button>}
-      </div>
-
-      {/* Environment summary */}
-      <div className="card" style={{ padding: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Environment & Feature Flags</div>
-        <div className="small" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', rowGap: 4, columnGap: 8 }}>
-          <div>SQLite Enabled</div><div>{isSQLiteEnabled() ? 'true' : 'false'}</div>
-          <div>API Base</div><div>{String(getApiBase() || '—')}</div>
-          <div>Admin Light Mode</div><div>{isAdminLight() ? 'true' : 'false'}</div>
-          <div>Modal Selectors (default)</div><div>{adminModalSelectorsDefault() ? 'true' : 'false'}</div>
+      {reminderPreview && !reminderPreview.error && (
+        <div className="small" style={{ color: reminderPreview.enabled === false ? '#b42318' : reminderPreview.actionable > 0 ? '#111' : '#475467' }}>
+          {reminderPreview.enabled === false
+            ? 'Auto reminders are disabled in settings.'
+            : reminderPreview.actionable > 0
+              ? `Reminders pending: ${reminderPreview.actionable}. Recently throttled: ${reminderPreview.skippedRecent}.`
+              : 'All recipients are up to date; no reminders need to be sent right now.'}
         </div>
+      )}
+      {reminderPreview?.error && (
+        <div className="small" style={{ color: '#b42318' }}>Reminder preview unavailable: {reminderPreview.error}</div>
+      )}
+
+      <div className="settings-actions" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {canEdit && <button className="btn" onClick={applyAndPersist}>Save Settings</button>}
+        {!canEdit && <span className="small muted">Read-only access</span>}
+        {canEdit && <button className="btn secondary" disabled={reminderBusy || (!!reminderPreview && (reminderPreview.enabled === false || reminderPreview.actionable === 0))} onClick={runRemindersNow} title="Send reminders to recipients who have not acknowledged and are near due date">{reminderBusy ? 'Running…' : 'Send reminders now'}</button>}
       </div>
     </div>
   );

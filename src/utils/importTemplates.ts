@@ -31,12 +31,14 @@ export const downloadExternalUsersTemplateExcel = () => {
     { Field: 'email', Required: 'Yes', Notes: 'Primary key. Valid email address.' },
     { Field: 'name', Required: 'No', Notes: 'Full name (optional).' },
     { Field: 'phone', Required: 'No', Notes: 'Phone number (optional).' },
+    { Field: 'department', Required: 'No', Notes: 'Free text department name (optional).' },
+    { Field: 'businessId', Required: 'No', Notes: 'Numeric business ID (optional). Use Businesses import to create/list IDs.' },
     { Field: 'status', Required: 'No', Notes: 'invited | active | disabled (default: invited for new records)' },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(readme), 'READ_ME');
   const rows = [
-    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', status: 'invited' },
-    { email: 'user2@example.com', name: 'Grace Hopper', phone: '+2348100000001', status: 'active' },
+    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', department: 'Engineering', businessId: 1, status: 'invited' },
+    { email: 'user2@example.com', name: 'Grace Hopper', phone: '+2348100000001', department: 'IT', businessId: '', status: 'active' },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'ExternalUsers');
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -45,8 +47,8 @@ export const downloadExternalUsersTemplateExcel = () => {
 
 export const downloadExternalUsersTemplateCsv = () => {
   const rows = [
-    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', status: 'invited' },
-    { email: 'user2@example.com', name: 'Grace Hopper', phone: '+2348100000001', status: 'active' },
+    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', department: 'Engineering', businessId: 1, status: 'invited' },
+    { email: 'user2@example.com', name: 'Grace Hopper', phone: '+2348100000001', department: 'IT', businessId: '', status: 'active' },
   ];
   downloadBlob(toCsvBlob(rows), 'external-users-template.csv');
 };
@@ -80,12 +82,12 @@ export const downloadBusinessesTemplateCsv = () => {
 export const downloadAllTemplatesExcel = () => {
   const wb = XLSX.utils.book_new();
   const readme = [
-    { Section: 'ExternalUsers', Notes: 'email (required), name, phone, status: invited|active|disabled' },
+    { Section: 'ExternalUsers', Notes: 'email (required), name, phone, department, businessId, status: invited|active|disabled' },
     { Section: 'Businesses', Notes: 'name (required), code (preferred), description, isActive: true|false|1|0' },
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(readme), 'README');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', status: 'invited' }
+    { email: 'user1@example.com', name: 'Ada Lovelace', phone: '+2348100000000', department: 'Engineering', businessId: 1, status: 'invited' }
   ]), 'ExternalUsers');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
     { name: 'Retail', code: 'RET', description: 'Retail business unit', isActive: true }
