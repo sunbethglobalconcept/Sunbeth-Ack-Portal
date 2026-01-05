@@ -51,46 +51,49 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     info('Layout mounted');
     const compute = async () => {
       // if not signed in yet, show neutral state
-      if ((!account || !token) && !isExternal) { 
-        setPending(null); 
-        setDueBy(null); 
-        return; 
+      if ((!account || !token) && !isExternal) {
+        setPending(null);
+        setDueBy(null);
+        return;
       }
 
       // Live mode: fetch batches + per-batch progress
       try {
-        // Use current token from context
+        const email: string | undefined = (account?.username || externalUser?.email || undefined)?.toLowerCase();
+
         let list: any[] = [];
-        try { 
-          const email: string | undefined = (account?.username || externalUser?.email || undefined)?.toLowerCase();
-          list = await getBatches(token || undefined, email); 
-        } catch { 
-          list = []; 
+        try {
+          list = await getBatches(token || undefined, email);
+        } catch {
+          list = [];
         }
-        
-        if (!Array.isArray(list) || list.length === 0) { 
-          setPending(0); 
-          setDueBy(null); 
-          return; 
+
+        if (!Array.isArray(list) || list.length === 0) {
+          setPending(0);
+          setDueBy(null);
+          return;
         }
-        
+
+        // Fetch per-batch progress in parallel so the dashboard doesn't block on sequential calls.
+        const progressResults = await Promise.allSettled(
+          list.map((b) => getUserProgress(b.toba_batchid, token || undefined, undefined, email))
+        );
+
         let pendingTotal = 0;
         const incompletes: Array<{ due?: string | null }> = [];
-        
-        for (const b of list) {
-          try {
-            const email: string | undefined = (account?.username || externalUser?.email || undefined)?.toLowerCase();
-            const p = await getUserProgress(b.toba_batchid, token || undefined, undefined, email);
-            const total = p.total ?? 0; 
-            const acked = p.acknowledged ?? 0;
-            const remain = Math.max(0, total - acked);
-            pendingTotal += remain;
-            if ((p.percent ?? 0) < 100) incompletes.push({ due: b.toba_duedate });
-          } catch { /* ignore */ }
-        }
-        
+
+        progressResults.forEach((res, idx) => {
+          if (res.status !== 'fulfilled') return;
+          const p = res.value || {};
+          const total = p.total ?? 0;
+          const acked = p.acknowledged ?? 0;
+          const remain = Math.max(0, total - acked);
+          pendingTotal += remain;
+          if ((p.percent ?? 0) < 100) incompletes.push({ due: list[idx]?.toba_duedate });
+        });
+
         setPending(pendingTotal);
-        
+
         if (incompletes.length) {
           const dates = incompletes.map(i => i.due).filter(Boolean) as string[];
           if (dates.length) {
@@ -146,6 +149,13 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     }
     prevAccount.current = account;
   }, [account, location.pathname, navigate]);
+
+  // If an external user signs in while on the login gateway, send them to the dashboard.
+  useEffect(() => {
+    if (isExternal && location.pathname.startsWith('/login')) {
+      navigate('/', { replace: true });
+    }
+  }, [isExternal, location.pathname, navigate]);
 
   // If already authenticated and currently on About, redirect to the dashboard.
   useEffect(() => {

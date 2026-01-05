@@ -1,5 +1,6 @@
 import { warn } from '../diagnostics/logger';
 import { getApiBase, getCompletionCcEmails, getCompletionBccEmails, getAdminEmails, getHrEmails } from '../utils/runtimeConfig';
+import { isCertificateAttachmentEnabled } from '../utils/runtimeConfig';
 import { buildUserCompletionEmail, sendEmail, sendEmailWithAttachmentChunks, fetchAsBase64, generateCertificatePdf } from './notificationService';
 import { buildUserCompletionCertificate } from './emailTemplates';
 import { getGraphToken } from './authTokens';
@@ -214,7 +215,8 @@ async function checkBatchCompleteFlag(base: string, batchId: string, recipients:
 /* eslint-disable-next-line complexity, max-lines-per-function */
 async function sendCertificateToUser(args: { base: string; batchId: string; ctx: { batch: any }; docs: any[]; email: string; payload: any; recipientRow: any; businessName?: string; docTitles: string[] }): Promise<void> {
   const { base, batchId, ctx, docs, email, payload, recipientRow, businessName, docTitles } = args;
-  const { certificateId, verifyUrl } = createCertificateIdentity();
+  const includeCertAttachment = isCertificateAttachmentEnabled();
+  const { certificateId, verifyUrl } = includeCertAttachment ? createCertificateIdentity() : { certificateId: undefined, verifyUrl: undefined } as any;
   const { subject: certSubject, bodyHtml: certBody } = buildUserCompletionCertificate({
     appUrl: window.location.origin,
     batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
@@ -229,41 +231,46 @@ async function sendCertificateToUser(args: { base: string; batchId: string; ctx:
     documents: docTitles,
     verifyUrl,
     certificateId,
+    includeAttachment: includeCertAttachment,
   });
-  // Best-effort: record certificate for verification
-  try {
-    await recordCertificate(base, {
-      certificateId,
-      batchId,
+  // Best-effort: record certificate for verification (only when cert mode is on)
+  if (includeCertAttachment && certificateId) {
+    try {
+      await recordCertificate(base, {
+        certificateId,
+        batchId,
+        userEmail: email,
+        userName: payload.userDisplay || payload.displayName || undefined,
+        completedOn: new Date().toISOString(),
+        department: recipientRow?.department || undefined,
+        jobTitle: recipientRow?.jobTitle || undefined,
+        location: recipientRow?.location || undefined,
+        businessName,
+        primaryGroup: recipientRow?.primaryGroup || undefined,
+        documents: docTitles,
+      });
+    } catch { /* non-blocking */ }
+  }
+
+  const attachments = await buildAttachments(base, docs).catch(() => []) as Array<{ name: string; contentBytes: string; contentType?: string }>;
+  if (includeCertAttachment) {
+    const pdf = await generateCertificatePdf({
+      batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
       userEmail: email,
       userName: payload.userDisplay || payload.displayName || undefined,
       completedOn: new Date().toISOString(),
+      documents: docTitles,
       department: recipientRow?.department || undefined,
       jobTitle: recipientRow?.jobTitle || undefined,
       location: recipientRow?.location || undefined,
       businessName,
       primaryGroup: recipientRow?.primaryGroup || undefined,
-      documents: docTitles,
-    });
-  } catch { /* non-blocking */ }
-
-  const attachments = await buildAttachments(base, docs).catch(() => []) as Array<{ name: string; contentBytes: string; contentType?: string }>;
-  const pdf = await generateCertificatePdf({
-    batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
-    userEmail: email,
-    userName: payload.userDisplay || payload.displayName || undefined,
-    completedOn: new Date().toISOString(),
-    documents: docTitles,
-    department: recipientRow?.department || undefined,
-    jobTitle: recipientRow?.jobTitle || undefined,
-    location: recipientRow?.location || undefined,
-    businessName,
-    primaryGroup: recipientRow?.primaryGroup || undefined,
-    verifyUrl,
-    pageSize: 'quarter',
-    certificateId,
-  }).catch(() => null);
-  if (pdf?.contentBytes) attachments.unshift({ name: pdf.name, contentBytes: pdf.contentBytes, contentType: pdf.contentType });
+      verifyUrl,
+      pageSize: 'quarter',
+      certificateId,
+    }).catch(() => null);
+    if (pdf?.contentBytes) attachments.unshift({ name: pdf.name, contentBytes: pdf.contentBytes, contentType: pdf.contentType });
+  }
   await sendUserCertificateEmail(email, payload, certSubject, certBody, attachments);
 }
 

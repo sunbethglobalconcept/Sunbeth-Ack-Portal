@@ -1,16 +1,18 @@
-/* eslint-disable max-lines-per-function, complexity */
+/* eslint-disable max-lines-per-function, complexity, max-lines */
 import React, { useEffect, useState } from 'react';
-import { useAuth as useAuthCtx } from '../../context/AuthContext';
+// import { useAuth as useAuthCtx } from '../../context/AuthContext';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
-import Alerts, { alertSuccess, alertError, alertWarning, showToast } from '../../utils/alerts';
+import { useRBAC } from '../../context/RBACContext';
+import { isPoliciesEnabled, isCertificateAttachmentEnabled, setCertificateAttachmentEnabled } from '../../utils/runtimeConfig';
+import Alerts, { alertError, alertWarning, showToast } from '../../utils/alerts';
 import { getPrefs as getTourPrefs, setGlobalEnabled as setToursGlobalEnabled, setTourEnabled as setTourEnabledPref, TourId } from '../tours/TourPrefs';
 import { getApiBase } from '../../utils/runtimeConfig';
 
 type AdminSettingsProps = { canEdit: boolean };
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
-  const { account } = useAuthCtx();
   const { refresh: refreshFlags } = useFeatureFlags();
+  const { isSuperAdmin } = useRBAC();
   const storageKey = 'admin_settings';
   const [settings, setSettings] = useState({
     enableUpload: false,
@@ -28,10 +30,12 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   const apiBase = (getApiBase() as string) || '';
 
   // Legal consent document
+  const policiesEnabled = isPoliciesEnabled();
   const [legalDoc, setLegalDoc] = useState<{ fileId: number | null; url: string | null; name: string | null }>({ fileId: null, url: null, name: null });
   const [legalBusy, setLegalBusy] = useState<boolean>(false);
   const [reminderBusy, setReminderBusy] = useState<boolean>(false);
   const [reminderPreview, setReminderPreview] = useState<{ actionable: number; skippedRecent: number; error?: string; enabled?: boolean } | null>(null);
+  const [certAttachEnabled, setCertAttachEnabled] = useState<boolean>(() => isCertificateAttachmentEnabled());
 
   useEffect(() => {
     try {
@@ -233,6 +237,46 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
         </div>
       </div>
       {/* External Support Toggle */}
+      {/* Policies UI Toggle (build-time flag surfaced to super admins) */}
+      {isSuperAdmin && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>Policies UI</div>
+              <div className="small muted">Feature-flagged; controlled by REACT_APP_POLICIES_ENABLED at build time.</div>
+            </div>
+            <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={policiesEnabled} disabled />
+              <span>{policiesEnabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+          </div>
+        </div>
+      )}
+      {/* Certificate PDF attachment toggle (local override) */}
+      {isSuperAdmin && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>Certificate PDF Attachments</div>
+              <div className="small muted">When off, completion emails omit the PDF attachment (verification link still included).</div>
+            </div>
+            <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={certAttachEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setCertAttachEnabled(val);
+                  setCertificateAttachmentEnabled(val);
+                  showToast(`Certificate attachments ${val ? 'enabled' : 'disabled'}`);
+                }}
+                disabled={!canEdit}
+              />
+              <span>{certAttachEnabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+          </div>
+        </div>
+      )}
       <div className="card external-support-card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>

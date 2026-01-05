@@ -10,8 +10,24 @@ import { TenantProvider } from './context/TenantContext';
 import { AppRoutes, RouteChangeLogger } from './routes';
 import Layout from './Layout';
 import ThemeController from './context/ThemeController';
+import { getUiSettings } from './services/settings';
 
 const App: React.FC = () => {
+  const [, setUiVersion] = React.useState(0);
+
+  // Fetch UI settings once on startup so runtimeConfig can use them
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const ui = await getUiSettings();
+        try { (window as any).__uiSettings = ui; } catch { /* ignore */ }
+        setUiVersion(v => v + 1); // trigger rerender to apply branding/colors
+      } catch {
+        /* ignore: fall back to env defaults */
+      }
+    })();
+  }, []);
+
   const tree = (
     <TenantProvider>
       <ExternalAuthProvider>

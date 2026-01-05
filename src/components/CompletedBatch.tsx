@@ -95,12 +95,12 @@ const CompletedBatch: React.FC = () => {
             <div className="muted small">You can still view previously acknowledged documents.</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
+            {/* <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PDF'}
             </button>
             <button className="btn ghost sm" onClick={() => handleDownloadCertificate('png')} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PNG'}
-            </button>
+            </button> */}
             <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
           </div>
         </div>

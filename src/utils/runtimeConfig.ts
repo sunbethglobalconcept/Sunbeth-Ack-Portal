@@ -30,6 +30,32 @@ export const getBrandPrimaryColor = (): string => (
   process.env.REACT_APP_BRAND_COLOR || '#0a3d33'
 );
 
+// Feature: Admin Policies UI
+export const isPoliciesEnabled = (): boolean => (
+  (process.env.REACT_APP_POLICIES_ENABLED || '').toLowerCase() === 'true'
+);
+
+const readLocalBool = (key: string): boolean | null => {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+  } catch { /* ignore */ }
+  return null;
+};
+
+// Feature: Attach certificate PDFs to completion emails (local override beats env)
+const CERT_ATTACH_KEY = 'sunbeth:certificates:attachments';
+export const isCertificateAttachmentEnabled = (): boolean => {
+  const local = readLocalBool(CERT_ATTACH_KEY);
+  if (local !== null) return local;
+  return (process.env.REACT_APP_CERTIFICATE_ATTACHMENTS_ENABLED || '').toLowerCase() === 'true';
+};
+
+export const setCertificateAttachmentEnabled = (value: boolean): void => {
+  try { localStorage.setItem(CERT_ATTACH_KEY, value ? 'true' : 'false'); } catch { /* ignore */ }
+};
+
 // HR notification recipients (comma-separated emails)
 export const getHrEmails = (): string[] => {
   const raw = (process.env.REACT_APP_HR_EMAILS || '').trim();

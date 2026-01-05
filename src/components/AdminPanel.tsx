@@ -20,7 +20,7 @@ import { getBusinesses } from '../services/dbService';
 import BatchCreationDebug from './BatchCreationDebug';
 import { alertSuccess, alertError, alertInfo, alertWarning, showToast } from '../utils/alerts';
 import { busyPush, busyPop } from '../utils/busy';
-import { isSQLiteEnabled, getApiBase, isAdminLight, useAdminModalSelectors as adminModalSelectorsDefault } from '../utils/runtimeConfig';
+import { isSQLiteEnabled, getApiBase, isAdminLight, useAdminModalSelectors as adminModalSelectorsDefault, isPoliciesEnabled } from '../utils/runtimeConfig';
 import RBACMatrix from './RBACMatrix';
 import RolesManager from './admin/RolesManager';
 import UsersManagement from './admin/UsersManagement';
@@ -57,6 +57,7 @@ const AdminPanel: React.FC = () => {
   const { role, canSeeAdmin, canEditAdmin, isSuperAdmin, perms } = useRBAC();
   const { account } = useAuthCtx();
   const { externalSupport } = useFeatureFlags();
+  const policiesFeatureEnabled = isPoliciesEnabled();
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'policies' | 'rbac' | 'manage' | 'users' | 'batch' | 'analytics' | 'notificationEmails' | 'diagnostics' | 'library'>('overview');
   const [usersSubtab, setUsersSubtab] = useState<'directory' | 'guests' | 'roles' | 'permissions' | 'imports'>('directory');
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
@@ -353,7 +354,10 @@ const AdminPanel: React.FC = () => {
     // Settings only if allowed
     if (isSuperAdmin || perms?.manageSettings) {
       base.push({ id: 'settings', label: 'Settings', icon: '⚙️' });
-      base.push({ id: 'policies', label: 'Policies', icon: '📜' } as any);
+      // Policies UI is feature-flagged; only expose when enabled
+      if (policiesFeatureEnabled) {
+        base.push({ id: 'policies', label: 'Policies', icon: '📜' } as any);
+      }
     }
     // Show Permission tab only if user can manage roles or permissions (Super Admin always)
     if (isSuperAdmin || perms?.manageRoles || perms?.managePermissions) {
@@ -376,13 +380,13 @@ const AdminPanel: React.FC = () => {
     if (isSuperAdmin) {
       base.push({ id: 'diagnostics', label: 'System Diagnostics', icon: '🧪' } as any);
     }
-    // Always show Document Library tab for admins, after Users tab
-    const usersIdx = base.findIndex(t => t.id === 'users');
-    if (usersIdx !== -1) {
-      base.splice(usersIdx + 1, 0, { id: 'library', label: 'Document Library', icon: '📂' });
-    } else {
-      base.push({ id: 'library', label: 'Document Library', icon: '📂' });
-    }
+    // // Always show Document Library tab for admins, after Users tab
+    // const usersIdx = base.findIndex(t => t.id === 'users');
+    // if (usersIdx !== -1) {
+    //   base.splice(usersIdx + 1, 0, { id: 'library', label: 'Document Library', icon: '📂' });
+    // } else {
+    //   base.push({ id: 'library', label: 'Document Library', icon: '📂' });
+    // }
     return base;
   })();
   const sqliteEnabled = isSQLiteEnabled();
@@ -934,7 +938,7 @@ const AdminPanel: React.FC = () => {
       <AdminSettings canEdit={!!(isSuperAdmin || perms?.manageSettings)} />
     </div>
   )}
-  {activeTab === 'policies' && (
+  {policiesFeatureEnabled && activeTab === 'policies' && (
           <div className="policies-section" style={{ display: 'grid', gap: 16 }}>
             <div className="card" style={{ padding: 16 }}>
               <h3 style={{ margin: '0 0 8px 0', fontSize: 16 }}>Recurring Policies</h3>

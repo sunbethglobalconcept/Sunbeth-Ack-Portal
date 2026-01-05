@@ -5,6 +5,7 @@ import { exportAnalyticsExcel } from '../utils/excelExport';
 import { exportAnalyticsCsvFull } from '../utils/csvExport';
 import { useAuth } from '../context/AuthContext';
 import { getBusinesses } from '../services/dbService';
+import BusinessAcknowledgementReport from './BusinessAcknowledgementReport';
 
 // Types for analytics data
 interface KPIData {
@@ -24,6 +25,8 @@ interface ComplianceData {
   pending: number;
   overdue: number;
   completionRate: number;
+  businessId?: string;
+  businessName?: string;
 }
 
 interface TrendData {
@@ -62,24 +65,65 @@ const KPICard: React.FC<{ title: string; value: string | number; change?: string
   </div>
 );
 
-// Chart Component (simplified)
-const SimpleChart: React.FC<{ data: any[]; type: 'line' | 'bar'; height?: number }> = ({ data, type, height = 200 }) => (
-  <div style={{
-    height,
-    border: '1px solid #e0e0e0',
-    borderRadius: 8,
-    padding: 16,
-    background: '#f8f9fa',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 14,
-    color: '#666'
-  }}>
-    📈 {type === 'line' ? 'Trend' : 'Bar'} Chart ({data.length} data points)
-    <div className="small" style={{ marginLeft: 8 }}>Interactive charts with Chart.js/D3 would render here</div>
-  </div>
-);
+// Minimal inline charts (no external deps) for go-live
+const TrendChart: React.FC<{ data: TrendData[]; height?: number }> = ({ data, height = 220 }) => {
+  if (!data || data.length === 0) {
+    return <div className="small muted" style={{ padding: 12 }}>No trend data for this range.</div>;
+  }
+  const maxVal = Math.max(...data.map(d => Math.max(d.completions, d.newBatches, d.activeUsers, 0)), 1);
+  const pts = data.map((d, i) => ({
+    x: (i / Math.max(1, data.length - 1)) * 100,
+    c: (1 - d.completions / maxVal) * 100,
+    n: (1 - d.newBatches / maxVal) * 100,
+    a: (1 - d.activeUsers / maxVal) * 100,
+    label: d.date,
+  }));
+  const line = (key: 'c' | 'n' | 'a', color: string, width = 2) =>
+    pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p[key].toFixed(2)}`).join(' ');
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height, background: '#f8f9fa', border: '1px solid #e0e0e0', borderRadius: 8 }}>
+      <path d={line('a', '#6f42c1')} fill="none" stroke="#6f42c1" strokeWidth={2} strokeLinecap="round" />
+      <path d={line('n', '#17a2b8')} fill="none" stroke="#17a2b8" strokeWidth={2} strokeLinecap="round" />
+      <path d={line('c', '#28a745')} fill="none" stroke="#28a745" strokeWidth={2} strokeLinecap="round" />
+    </svg>
+  );
+};
+
+const ComplianceChart: React.FC<{ data: ComplianceData[]; height?: number }> = ({ data, height = 220 }) => {
+  if (!data || data.length === 0) {
+    return <div className="small muted" style={{ padding: 12 }}>No compliance breakdown for this filter.</div>;
+  }
+  const top = data.slice(0, 8);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {top.map((row, idx) => {
+        const total = Math.max(1, safeNum(row.totalUsers));
+        const comp = Math.min(100, (safeNum(row.completed) / total) * 100);
+        const pend = Math.min(100, (safeNum(row.pending) / total) * 100);
+        const over = Math.min(100, (safeNum(row.overdue) / total) * 100);
+        return (
+          <div key={idx}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600 }}>{row.department || 'Department'}</span>
+              <span className="small muted">{row.businessName || '—'}</span>
+            </div>
+            <div className="small muted" style={{ marginBottom: 4 }}>{total} users</div>
+            <div style={{ display: 'grid', gridTemplateColumns: `${comp}% ${pend}% ${over}%`, gap: 2, height: 10, borderRadius: 8, overflow: 'hidden', background: '#eceff1' }}>
+              <div style={{ background: '#28a745', width: '100%' }} />
+              <div style={{ background: '#ffc107', width: '100%' }} />
+              <div style={{ background: '#dc3545', width: '100%' }} />
+            </div>
+            <div className="small muted" style={{ marginTop: 4 }}>
+              <span style={{ color: '#28a745', marginRight: 8 }}>Completed {comp.toFixed(0)}%</span>
+              <span style={{ color: '#856404', marginRight: 8 }}>Pending {pend.toFixed(0)}%</span>
+              <span style={{ color: '#721c24' }}>Overdue {over.toFixed(0)}%</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 // Data Table Component
 const DataTable: React.FC<{ data: any[]; columns: Array<{ key: string; label: string; format?: (val: any) => string }> }> = ({
@@ -350,7 +394,10 @@ const AnalyticsDashboard: React.FC = () => {
             if (r.primaryGroup) groupSet.add(String(r.primaryGroup));
           }
           const businesses = Array.isArray(bizRes)
-            ? bizRes.map((b: any) => ({ id: String(b.id || b.toba_businessid || ''), name: String(b.name || b.toba_name || '') }))
+            ? bizRes.map((b: any) => ({
+                id: String(b.id || b.business_id || b.businessid || b.toba_businessid || '').trim(),
+                name: String(b.name || b.business_name || b.legal_name || b.toba_name || '').trim()
+              }))
             : [];
           setLiveOptions({ businesses, departments: Array.from(deptSet).sort(), groups: Array.from(groupSet).sort() });
 
@@ -367,9 +414,37 @@ const AnalyticsDashboard: React.FC = () => {
               })
             : [];
 
+          // Build business lookup for mapping IDs -> names
+          const businessMap = new Map<string, string>();
+          for (const b of Array.isArray(bizRes) ? bizRes : []) {
+            const id = String(b.id || b.business_id || b.businessid || b.toba_businessid || '').trim();
+            const name = String(b.name || b.business_name || b.legal_name || b.toba_name || b.displayName || '').trim();
+            if (id && name) businessMap.set(id, name);
+          }
+
+          const compliance = Array.isArray(compRes)
+            ? (compRes as any[]).map((c: any) => {
+                const businessId = String(c.businessId || c.business_id || c.toba_businessid || c.businessid || '').trim();
+                const mappedName = businessId && businessMap.has(businessId) ? businessMap.get(businessId) : undefined;
+                const fallbackName = c.businessName || c.business || c.business_name || undefined;
+                return {
+                  department: String(c.department || c.dept || '—'),
+                  totalUsers: safeNum(c.totalUsers ?? c.users ?? c.total ?? 0),
+                  completed: safeNum(c.completed ?? c.done ?? 0),
+                  pending: safeNum(c.pending ?? 0),
+                  overdue: safeNum(c.overdue ?? 0),
+                  completionRate: safeNum(c.completionRate ?? c.rate ?? 0),
+                  businessId: businessId || undefined,
+                  businessName: mappedName
+                    || (typeof fallbackName === 'string' ? String(fallbackName) : undefined)
+                    || (businessId ? businessId : undefined),
+                } as ComplianceData;
+              })
+            : [];
+
           const live = {
             kpis: { ...statsRes, lastUpdated: new Date().toISOString() },
-            compliance: Array.isArray(compRes) ? compRes : [],
+            compliance,
             trends: Array.isArray((trendRes as any).completions) ? (trendRes as any).completions.map((row: any, idx: number) => ({
               date: row.date,
               completions: Number(row.count || 0),
@@ -485,24 +560,11 @@ const AnalyticsDashboard: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, marginBottom: 32 }}>
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px 0', fontSize: 18 }}>📈 Completion Trends (30 days)</h3>
-          <SimpleChart data={data.trends} type="line" height={250} />
+          <TrendChart data={data.trends} height={250} />
         </div>
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px 0', fontSize: 18 }}>🎯 Compliance Status</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#d4edda', borderRadius: 6 }}>
-              <span>Compliant</span>
-              <strong style={{ color: '#155724' }}>{data.kpis.completionRate}%</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#fff3cd', borderRadius: 6 }}>
-              <span>Pending</span>
-              <strong style={{ color: '#856404' }}>{Math.max(0, 100 - data.kpis.completionRate)}%</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#f8d7da', borderRadius: 6 }}>
-              <span>Overdue</span>
-              <strong style={{ color: '#721c24' }}>{data.kpis.overdueBatches}%</strong>
-            </div>
-          </div>
+          <ComplianceChart data={data.compliance} height={250} />
         </div>
       </div>
 
@@ -537,6 +599,7 @@ const AnalyticsDashboard: React.FC = () => {
                 data={items}
                 columns={[
                   { key: 'department', label: 'Department' },
+                  { key: 'businessName', label: 'Business' },
                   { key: 'totalUsers', label: 'Total Users', format: (val) => safeNum(val).toLocaleString() },
                   { key: 'completed', label: 'Completed', format: (val) => safeNum(val).toLocaleString() },
                   { key: 'pending', label: 'Pending', format: (val) => safeNum(val).toLocaleString() },
@@ -558,6 +621,11 @@ const AnalyticsDashboard: React.FC = () => {
             );
           })()
         )}
+      </div>
+
+      {/* Business-level acknowledgement rollup */}
+      <div className="card" style={{ padding: 20, marginBottom: 32 }}>
+        <BusinessAcknowledgementReport />
       </div>
 
       {/* Live recipients preview (filtered) */}
