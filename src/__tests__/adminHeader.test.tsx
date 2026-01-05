@@ -16,7 +16,8 @@ jest.mock('../utils/runtimeConfig', () => ({
   isSQLiteEnabled: () => true,
   getApiBase: () => 'https://sunbeth-ack-portal-backend.vercel.app',
   isAdminLight: () => false,
-  useAdminModalSelectors: () => true
+  useAdminModalSelectors: () => true,
+  isPoliciesEnabled: () => true
 }));
 
 // Basic fetch mock for endpoints touched on mount

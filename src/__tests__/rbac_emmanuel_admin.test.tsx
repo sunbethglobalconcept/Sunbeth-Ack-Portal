@@ -25,6 +25,7 @@ jest.mock('../utils/runtimeConfig', () => ({
   getApiBase: () => 'https://api.example.test',
   isAdminLight: () => false,
   useAdminModalSelectors: () => true,
+  isPoliciesEnabled: () => true,
   // Branding + busy overlay timings used by Layout's DancingLogoOverlay
   getBrandLogoUrl: () => '',
   getBrandName: () => 'Sunbeth',

@@ -17,7 +17,8 @@ jest.mock('../utils/runtimeConfig', () => ({
   getApiBase: () => null,
   isAdminLight: () => true,
   useAdminModalSelectors: () => true,
-  // Overlay/branding (spares any components that might use them)
+  // Overlay/branding (spares any components that might use them),
+  isPoliciesEnabled: () => true,
   getBrandLogoUrl: () => '',
   getBrandName: () => 'Sunbeth',
   getBrandPrimaryColor: () => '#0a66ff',
