@@ -36,39 +36,46 @@ export interface UserSearchFilters {
   maxPages?: number;
 }
 
+export type UsersPage = { items: GraphUser[]; nextLink: string | null };
+
+/** Fetch a single page of users, returning nextLink for pagination. */
+export const fetchUsersPage = async (token: string, filters?: UserSearchFilters, pagingUrl?: string): Promise<UsersPage> => {
+  const top = Math.max(1, Math.min(999, (filters?.top ?? 100)));
+  const escapeOData = (s: string) => s.replace(/'/g, "''");
+  const baseNoOrder = `https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,officeLocation,businessPhones,mobilePhone&$top=${top}`;
+  const base = (filters?.search && filters.search.trim()) ? baseNoOrder : `${baseNoOrder}&$orderby=displayName`;
+  const filterStr = filters?.search ? `(startswith(displayName,'${escapeOData(filters.search)}') or startswith(userPrincipalName,'${escapeOData(filters.search)}') or startswith(mail,'${escapeOData(filters.search)}'))` : '';
+  const url = pagingUrl || (filterStr ? `${base}&$filter=${filterStr}` : base);
+
+  const response: Response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'ConsistencyLevel': 'eventual' }
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Graph API error: ${response.status} ${response.statusText}${text ? ' — ' + text : ''}`);
+  }
+  const data: any = await response.json();
+  const page = Array.isArray(data.value) ? (data.value as GraphUser[]) : [];
+  const nextLink = data['@odata.nextLink'] || null;
+  return { items: page, nextLink };
+};
+
 /**
  * Fetches all users in the organization with optional filtering
  */
 export const getUsers = async (token: string, filters?: UserSearchFilters): Promise<GraphUser[]> => {
   try {
-    // Base query with reasonable page size; we will follow @odata.nextLink for pagination
-    // NOTE: Graph returns Request_UnsupportedQuery when combining sorting with certain search patterns.
-    // To avoid 400 errors, omit $orderby when a search term is used.
-    const top = Math.max(1, Math.min(999, (filters?.top ?? 100)));
-    const baseNoOrder = `https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,officeLocation,businessPhones,mobilePhone&$top=${top}`;
-    const base = (filters?.search && filters.search.trim()) ? baseNoOrder : `${baseNoOrder}&$orderby=displayName`;
-    const escapeOData = (s: string) => s.replace(/'/g, "''");
-    const filterStr = filters?.search ? `(startswith(displayName,'${escapeOData(filters.search)}') or startswith(userPrincipalName,'${escapeOData(filters.search)}') or startswith(mail,'${escapeOData(filters.search)}'))` : '';
-    let url = filterStr ? `${base}&$filter=${filterStr}` : base;
-
     const users: GraphUser[] = [];
     let pagesFetched = 0;
     const maxPages = Math.max(1, Math.min(50, (filters?.maxPages ?? 1)));
-    while (url && pagesFetched < maxPages) {
-      const response: Response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'ConsistencyLevel': 'eventual' }
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Graph API error: ${response.status} ${response.statusText}${text ? ' — ' + text : ''}`);
-      }
-
-      const data: any = await response.json();
-      const page = Array.isArray(data.value) ? (data.value as GraphUser[]) : [];
-      users.push(...page);
-      url = data['@odata.nextLink'] || '';
+    const top = Math.max(1, Math.min(999, (filters?.top ?? 100)));
+    let next: string | null | undefined = undefined;
+    while ((next !== null) && pagesFetched < maxPages) {
+      const { items, nextLink: nextPageLink }: UsersPage = await fetchUsersPage(token, filters, next === undefined ? undefined : next);
+      users.push(...items);
+      next = nextPageLink;
       pagesFetched++;
+      if (!next) break;
     }
 
     // Apply client-side filters for better UX

@@ -1,7 +1,6 @@
 import { warn } from '../diagnostics/logger';
 import { getApiBase, getCompletionCcEmails, getCompletionBccEmails, getAdminEmails, getHrEmails } from '../utils/runtimeConfig';
-import { isCertificateAttachmentEnabled } from '../utils/runtimeConfig';
-import { buildUserCompletionEmail, sendEmail, sendEmailWithAttachmentChunks, fetchAsBase64, generateCertificatePdf } from './notificationService';
+import { buildUserCompletionEmail, sendEmail, sendEmailWithAttachmentChunks, fetchAsBase64, generateCertificatePdf, generateAdminCompletionPdf, generateUserCompletionPdf } from './notificationService';
 import { buildUserCompletionCertificate } from './emailTemplates';
 import { getGraphToken } from './authTokens';
 
@@ -167,10 +166,11 @@ async function sendAdminEmail(
   subject: string,
   bodyHtml: string,
   cc?: Array<{ address: string }>,
-  bcc?: Array<{ address: string }>
+  bcc?: Array<{ address: string }>,
+  attachments?: Array<{ name: string; contentBytes: string; contentType?: string }>
 ): Promise<void> {
   try {
-    await sendEmail(recipients as any, subject, bodyHtml, undefined, { cc, bcc });
+    await sendEmail(recipients as any, subject, bodyHtml, attachments && attachments.length ? attachments : undefined, { cc, bcc });
   } catch (err) {
     let errMsg = '';
     if (err && typeof err === 'object' && 'message' in err) { errMsg = (err as any).message; }
@@ -215,8 +215,9 @@ async function checkBatchCompleteFlag(base: string, batchId: string, recipients:
 /* eslint-disable-next-line complexity, max-lines-per-function */
 async function sendCertificateToUser(args: { base: string; batchId: string; ctx: { batch: any }; docs: any[]; email: string; payload: any; recipientRow: any; businessName?: string; docTitles: string[] }): Promise<void> {
   const { base, batchId, ctx, docs, email, payload, recipientRow, businessName, docTitles } = args;
-  const includeCertAttachment = isCertificateAttachmentEnabled();
-  const { certificateId, verifyUrl } = includeCertAttachment ? createCertificateIdentity() : { certificateId: undefined, verifyUrl: undefined } as any;
+  // Always skip generating the certificate PDF attachment, but still create identity for verify link
+  const includeCertAttachment = false;
+  const { certificateId, verifyUrl } = createCertificateIdentity();
   const { subject: certSubject, bodyHtml: certBody } = buildUserCompletionCertificate({
     appUrl: window.location.origin,
     batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
@@ -233,8 +234,8 @@ async function sendCertificateToUser(args: { base: string; batchId: string; ctx:
     certificateId,
     includeAttachment: includeCertAttachment,
   });
-  // Best-effort: record certificate for verification (only when cert mode is on)
-  if (includeCertAttachment && certificateId) {
+  // Record certificate for verification even if attachment is omitted
+  if (certificateId) {
     try {
       await recordCertificate(base, {
         certificateId,
@@ -253,6 +254,24 @@ async function sendCertificateToUser(args: { base: string; batchId: string; ctx:
   }
 
   const attachments = await buildAttachments(base, docs).catch(() => []) as Array<{ name: string; contentBytes: string; contentType?: string }>;
+  // Attach PDF version of the completion email (required by default)
+  try {
+    const emailPdf = await generateUserCompletionPdf({
+      batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
+      userEmail: email,
+      userName: payload.userDisplay || payload.displayName || undefined,
+      completedOn: new Date().toISOString(),
+      documents: docTitles,
+      department: recipientRow?.department || undefined,
+      jobTitle: recipientRow?.jobTitle || undefined,
+      location: recipientRow?.location || undefined,
+      businessName,
+      primaryGroup: recipientRow?.primaryGroup || undefined,
+    });
+    if (emailPdf?.contentBytes) attachments.unshift({ name: emailPdf.name, contentBytes: emailPdf.contentBytes, contentType: emailPdf.contentType });
+  } catch {
+    // best-effort: keep going even if PDF fails
+  }
   if (includeCertAttachment) {
     const pdf = await generateCertificatePdf({
       batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
@@ -313,7 +332,28 @@ async function notifyAdmins(args: { ctx: { batch: any; docCount: number }; email
     businessName,
     primaryGroup: recipientRow?.primaryGroup || undefined,
   });
+  let pdfAttachment: Array<{ name: string; contentBytes: string; contentType?: string }> = [];
+  try {
+    const pdf = await generateAdminCompletionPdf({
+      batchName: String(ctx.batch?.toba_name || ctx.batch?.name || 'Batch'),
+      userEmail: email,
+      userName: payload.userDisplay || payload.displayName || undefined,
+      completedOn: new Date().toISOString(),
+      totalDocuments: ctx.docCount,
+      documents: docTitles,
+      department: recipientRow?.department || undefined,
+      jobTitle: recipientRow?.jobTitle || undefined,
+      location: recipientRow?.location || undefined,
+      businessName,
+      primaryGroup: recipientRow?.primaryGroup || undefined,
+    });
+    if (pdf?.contentBytes) {
+      pdfAttachment = [{ name: pdf.name, contentBytes: pdf.contentBytes, contentType: pdf.contentType }];
+    }
+  } catch (e) {
+    // best-effort; ignore PDF failures
+  }
   const cc = getCompletionCcEmails().filter(Boolean).map((a) => ({ address: a }));
   const bcc = getCompletionBccEmails().map((a) => ({ address: a }));
-  await sendAdminEmail(recipientsAll as any, subject, bodyHtml, cc, bcc);
+  await sendAdminEmail(recipientsAll as any, subject, bodyHtml, cc, bcc, pdfAttachment);
 }

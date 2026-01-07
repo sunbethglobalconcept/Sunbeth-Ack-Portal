@@ -12,7 +12,8 @@
  *   Teams DM (optional): Chat.ReadWrite
  */
 import { getGraphToken } from './authTokens';
-import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getApiBase } from '../utils/runtimeConfig';
+import { getBrandLogoUrl, getCertificateLogoUrl, getBrandName, getBrandPrimaryColor, getApiBase } from '../utils/runtimeConfig';
+import { buildUserCompletionCertificate } from './emailTemplates';
 
 type Recipient = { address: string; name?: string };
 type MailOptions = { cc?: Recipient[]; bcc?: Recipient[] };
@@ -297,8 +298,8 @@ export const generateCertificatePdf = async (payload: {
   pageSize?: 'a4' | 'quarter';
 }): Promise<{ name: string; contentBytes: string; contentType: string }> => {
   const base = getApiBase() as string;
-  // Ensure logo URL is absolute so backend can fetch it
-  const rawLogo = getBrandLogoUrl();
+  // Ensure certificate logo URL is absolute so backend can fetch it
+  const rawLogo = getCertificateLogoUrl() || getBrandLogoUrl();
   const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
   const res = await fetch(`${base}/api/certificates/pdf`, {
     method: 'POST',
@@ -360,6 +361,111 @@ export const generateCertificatePng = async (payload: {
   };
 };
 
+/** Generate a PDF copy of the user completion email body */
+export const generateUserCompletionPdf = async (payload: {
+  batchName: string;
+  userEmail: string;
+  userName?: string;
+  completedOn?: string;
+  documents?: string[];
+  department?: string;
+  jobTitle?: string;
+  location?: string;
+  businessName?: string;
+  primaryGroup?: string;
+  verifyUrl?: string;
+  certificateId?: string;
+}): Promise<{ name: string; contentBytes: string; contentType: string }> => {
+  const base = getApiBase() as string;
+  const rawLogo = getCertificateLogoUrl();
+  const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
+  const { bodyHtml } = buildUserCompletionCertificate({
+    appUrl: window.location.origin,
+    batchName: payload.batchName,
+    userEmail: payload.userEmail,
+    userName: payload.userName,
+    completedOn: payload.completedOn,
+    documents: payload.documents,
+    department: payload.department,
+    jobTitle: payload.jobTitle,
+    location: payload.location,
+    businessName: payload.businessName,
+    primaryGroup: payload.primaryGroup,
+    verifyUrl: payload.verifyUrl,
+    certificateId: payload.certificateId,
+    includeAttachment: true,
+  });
+  const res = await fetch(`${base}/api/emails/user-completion-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      brandName: getBrandName(),
+      brandLogoUrl: absLogo,
+      brandPrimaryColor: getBrandPrimaryColor(),
+      htmlBody: bodyHtml,
+    })
+  });
+  if (!res.ok) throw new Error(`User completion PDF failed: ${res.status}`);
+  const j = await res.json();
+  return {
+    name: String(j?.name || `acknowledgement-${payload.userEmail || 'user'}.pdf`),
+    contentBytes: String(j?.contentBytes || ''),
+    contentType: String(j?.contentType || 'application/pdf')
+  };
+};
+
+/** Generate a PDF copy of the admin completion email body */
+export const generateAdminCompletionPdf = async (payload: {
+  batchName: string;
+  userEmail: string;
+  userName?: string;
+  completedOn?: string;
+  totalDocuments?: number;
+  documents?: string[];
+  department?: string;
+  jobTitle?: string;
+  location?: string;
+  businessName?: string;
+  primaryGroup?: string;
+}): Promise<{ name: string; contentBytes: string; contentType: string }> => {
+  const base = getApiBase() as string;
+  const rawLogo = getCertificateLogoUrl();
+  const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
+  const { subject, bodyHtml } = buildUserCompletionEmail({
+    appUrl: window.location.origin,
+    batchName: payload.batchName,
+    userEmail: payload.userEmail,
+    userName: payload.userName,
+    completedOn: payload.completedOn,
+    totalDocuments: payload.totalDocuments,
+    documents: payload.documents,
+    department: payload.department,
+    jobTitle: payload.jobTitle,
+    location: payload.location,
+    businessName: payload.businessName,
+    primaryGroup: payload.primaryGroup,
+  });
+  const res = await fetch(`${base}/api/emails/admin-completion-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      brandName: getBrandName(),
+      brandLogoUrl: absLogo,
+      brandPrimaryColor: getBrandPrimaryColor(),
+      htmlBody: bodyHtml,
+    })
+  });
+  if (!res.ok) throw new Error(`Admin completion PDF failed: ${res.status}`);
+  const j = await res.json();
+  return {
+    name: String(j?.name || `acknowledgement-${payload.userEmail || 'user'}.pdf`),
+    contentBytes: String(j?.contentBytes || ''),
+    contentType: String(j?.contentType || 'application/pdf')
+  };
+};
+
 /** Build completion email for a single user's completion of a batch */
 // eslint-disable-next-line max-lines-per-function
 export const buildUserCompletionEmail = (opts: {
@@ -384,6 +490,7 @@ export const buildUserCompletionEmail = (opts: {
   const docsHtml = docs.length > 0
     ? `<ol style="margin:12px 0 0 22px;color:#333">${docs.map(t => `<li>${t}</li>`).join('')}</ol>`
     : '<div style="margin:12px 0 0 0;color:#666">Documents list unavailable.</div>';
+  const statementHtml = `<h3 style="margin:12px 0 8px 0;font-size:14px;color:#111">Compliance Statement</h3><p style="margin:0 0 12px 0;color:#333">I ${opts.userName || opts.userEmail} have read, understood, and agree to comply with the terms of this document</p>`;
   const bodyHtml = `
     <div style="background:#f7f8fa;padding:24px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e9ecef;border-radius:10px;overflow:hidden">
@@ -406,11 +513,12 @@ export const buildUserCompletionEmail = (opts: {
               ${opts.completedOn ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Completed on:</td><td style="padding:4px 0"><strong>${new Date(opts.completedOn).toLocaleString()}</strong></td></tr>` : ''}
               ${opts.totalDocuments != null ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Documents:</td><td style="padding:4px 0"><strong>${opts.totalDocuments}</strong></td></tr>` : ''}
               ${opts.department ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Department:</td><td style="padding:4px 0">${opts.department}</td></tr>` : ''}
+              ${opts.businessName ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Business:</td><td style="padding:4px 0">${opts.businessName}</td></tr>` : ''}
               ${opts.jobTitle ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Job title:</td><td style="padding:4px 0">${opts.jobTitle}</td></tr>` : ''}
               ${opts.location ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Location:</td><td style="padding:4px 0">${opts.location}</td></tr>` : ''}
-              ${opts.businessName ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Business:</td><td style="padding:4px 0">${opts.businessName}</td></tr>` : ''}
               ${opts.primaryGroup ? `<tr><td style="padding:4px 8px 4px 0;color:#666">Primary group:</td><td style="padding:4px 0">${opts.primaryGroup}</td></tr>` : ''}
             </table>
+            ${statementHtml}
             <h3 style="margin:12px 0 8px 0;font-size:14px;color:#111">Documents Acknowledged</h3>
             ${docsHtml}
             <p style="margin:0 0 12px 0">You may review the batch and user details in the Acknowledgement Portal.</p>

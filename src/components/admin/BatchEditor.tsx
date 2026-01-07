@@ -1,5 +1,5 @@
 /* eslint-disable max-lines-per-function, complexity, react-hooks/exhaustive-deps, react-hooks/rules-of-hooks, @typescript-eslint/no-empty-function, @typescript-eslint/no-non-null-assertion, no-empty, max-lines, max-depth, no-useless-escape */
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { UserGroupSelector } from './UserGroupSelector';
 import LocalLibraryPicker from './LocalLibraryPicker';
 import SharePointBrowser from './SharePointBrowser';
@@ -91,13 +91,16 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
     businesses,
     mappingUsers,
     expandGroupsForMapping,
-    
+
     applyBusinessToAll,
     defaultBusinessId,
     setDefaultBusinessId,
-    
+
     saveBatch,
   } = props;
+
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const previewReqRef = useRef(0);
 
   return (
     <div>
@@ -198,6 +201,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
           </div>
           <div className="sharepoint-picker-section">
             <SharePointBrowser canUpload={!!canUploadDocuments} onDocumentSelect={async (spDocs) => {
+            if (props.importBusy) { showToast('An import is already running', 'warning'); return; }
             // Import SharePoint selections to server library with progress/dedupe status
             try {
               const base = (getApiBase() as string) || '';
@@ -240,6 +244,7 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
                 ...prev,
                 selectedDocuments: props.mergeDocuments(prev.selectedDocuments, spDocs.map(d => ({ title: d.name, url: d.webUrl, version: 1, requiresSignature: false, driveId: (d as any)?.parentReference?.driveId, itemId: (d as any)?.id, source: 'sharepoint' })))
               }));
+              showToast('Import failed; added SharePoint links only', 'error');
             } finally {
               props.setImportBusy(false);
             }
@@ -437,7 +442,10 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
           <button id="reset-batch-form" className="btn ghost" onClick={() => { setBatchForm({ name: '', startDate: '', dueDate: '', description: '', selectedUsers: [], selectedGroups: [], selectedDocuments: [], notifyByEmail: true, notifyByTeams: false }); props.setBusinessMap({}); setDefaultBusinessId(''); }}>
             {editingBatchId ? 'Cancel Edit' : 'Reset Form'}
           </button>
-          <button id="preview-recipients-button" className="btn ghost" title="Preview expanded recipients" onClick={async () => {
+          <button id="preview-recipients-button" className="btn ghost" title="Preview expanded recipients" disabled={previewBusy} onClick={async () => {
+            if (previewBusy) return;
+            const reqId = ++previewReqRef.current;
+            setPreviewBusy(true);
             try {
               const recipientSet = new Set<string>();
               for (const u of batchForm.selectedUsers) {
@@ -454,9 +462,12 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
                 }
               }
               const count = recipientSet.size;
-              showToast(`Recipient preview: ${count} unique addresses`, 'info');
+              if (reqId === previewReqRef.current) showToast(`Recipient preview: ${count} unique addresses`, 'info');
             } catch (e) {
               showToast('Failed to preview recipients', 'error');
+            }
+            finally {
+              if (reqId === previewReqRef.current) setPreviewBusy(false);
             }
           }}>Preview Recipients</button>
           <button id="grant-permissions-button" className="btn ghost" title="Grant Graph permissions" onClick={async () => {

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useExternalAuth } from '../context/ExternalAuthContext';
 import { getDocumentsByBatch, getAcknowledgedDocIds, getBatches } from '../services/dbService';
 import { generateCertificatePdf, generateCertificatePng } from '../services/notificationService';
+import { getApiBase } from '../utils/runtimeConfig';
 import type { Doc } from '../types/models';
 
 const CompletedBatch: React.FC = () => {
@@ -15,6 +16,7 @@ const CompletedBatch: React.FC = () => {
   const [batchName, setBatchName] = useState<string>('');
   const [downloading, setDownloading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [recipientRow, setRecipientRow] = useState<any | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -40,6 +42,21 @@ const CompletedBatch: React.FC = () => {
     })();
   }, [id, token, account?.username, externalUser?.email]);
 
+  // Load recipient metadata for department/business enrichment
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      try {
+        const base = getApiBase();
+        if (!base) return; // best-effort only when API base is configured
+        const email = String((account?.username || externalUser?.email || '')).toLowerCase();
+        const recs = await fetch(`${base}/api/batches/${encodeURIComponent(String(id))}/recipients`).then(r => r.json()).catch(() => []);
+        const row = (Array.isArray(recs) ? recs : []).find((r: any) => String(r.email || r.user || '').toLowerCase() === email) || null;
+        setRecipientRow(row);
+      } catch { setRecipientRow(null); }
+    })();
+  }, [id, token, account?.username, externalUser?.email]);
+
   const ackedDocs = useMemo(() => {
     const list = Array.isArray(docs) ? docs : [];
     const ids = Array.isArray(ackIds) ? ackIds : [];
@@ -54,14 +71,18 @@ const CompletedBatch: React.FC = () => {
       const email = (account?.username || externalUser?.email || '').toString();
       const userName = (account?.name || externalUser?.name || email || '').toString();
       const titles = ackedDocs.map(d => d.toba_title).filter(Boolean);
+      const dept = recipientRow?.department || undefined;
+      const bizName = recipientRow?.businessName || undefined;
       const payload = {
         batchName: batchName || `Batch ${id}`,
         userEmail: email,
         userName,
         completedOn: new Date().toISOString(),
         documents: titles,
+        department: dept,
+        businessName: bizName,
         verifyUrl: `${window.location.origin}/batch/${encodeURIComponent(String(id))}/completed`,
-        pageSize: 'quarter' as const,
+        pageSize: 'a4' as const,
       };
       const file = format === 'pdf' ? await generateCertificatePdf(payload) : await generateCertificatePng(payload);
       // Convert base64 to Blob and trigger download
@@ -95,12 +116,12 @@ const CompletedBatch: React.FC = () => {
             <div className="muted small">You can still view previously acknowledged documents.</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
+            <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PDF'}
             </button>
             <button className="btn ghost sm" onClick={() => handleDownloadCertificate('png')} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PNG'}
-            </button> */}
+            </button>
             <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
           </div>
         </div>

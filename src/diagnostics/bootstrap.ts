@@ -71,11 +71,21 @@ export const installBusyNetworkTracking = () => {
       const silence = Boolean((init as any)?.busySilence);
       const custom = (init as any)?.busyLabel as string | undefined;
       const label = custom ?? labelFrom(urlStr, method);
+      const timeoutMs = Number(process.env.REACT_APP_FETCH_TIMEOUT_MS || 15000);
+      const userSignal = init?.signal;
+      const controller = userSignal ? null : new AbortController();
+      const timer = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+      const nextInit = controller ? { ...init, signal: controller.signal } : init;
       if (!silence && label) busyPush(label);
       try {
-        const res = await originalFetch(input as any, init as any);
+        const res = await originalFetch(input as any, nextInit as any);
         return res;
+      } catch (err: any) {
+        // Surface timeout/abort with clearer console note
+        if (err?.name === 'AbortError') warn(`Fetch aborted after ${timeoutMs}ms: ${urlStr}`);
+        throw err;
       } finally {
+        if (timer) window.clearTimeout(timer);
         if (!silence && label) busyPop();
       }
     };

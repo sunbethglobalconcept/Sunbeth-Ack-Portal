@@ -27,6 +27,69 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     if (lastErr) throw lastErr;
     throw new Error('All API base candidates failed: ' + bases.join(', '));
   };
+  const getFirebaseRtdUrl = () => (process.env.REACT_APP_FIREBASE_RTD_URL || 'https://sunbeth-ack-portal-default-rtdb.firebaseio.com').replace(/\/$/, '');
+  const fetchFirebaseBusinesses = async () => {
+    try {
+      const url = `${getFirebaseRtdUrl()}/tables/businesses.json`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`firebase_businesses_fetch_failed_${r.status}`);
+      const json = await r.json();
+      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      console.warn('firebase_businesses_fetch_failed', e);
+      return [];
+    }
+  };
+  const fetchUserBusinesses = async () => {
+    try {
+      const url = `${getFirebaseRtdUrl()}/tables/user_businesses.json`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`user_businesses_fetch_failed_${r.status}`);
+      const json = await r.json();
+      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      console.warn('user_businesses_fetch_failed', e);
+      return [];
+    }
+  };
+  const fetchBatches = async () => {
+    try {
+      const res = await tryFetchJson('/api/batches');
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      console.warn('batches_fetch_failed', e);
+      return [];
+    }
+  };
+  const fetchConsents = async () => {
+    // Prefer admin export; fallback to RTDB if not accessible
+    try {
+      const res = await tryFetchJson('/api/admin/consents/export?limit=5000');
+      const items = Array.isArray((res as any)?.items)
+        ? (res as any).items
+        : Array.isArray((res as any)?.consents)
+          ? (res as any).consents
+          : Array.isArray(res)
+            ? (res as any)
+            : [];
+      return items;
+    } catch (e) {
+      console.warn('consents_export_api_failed', e);
+    }
+    try {
+      const url = `${getFirebaseRtdUrl()}/tables/consents.json`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`rtdb_consents_fetch_failed_${r.status}`);
+      const json = await r.json();
+      const items = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
+      return items;
+    } catch (e2) {
+      console.warn('consents_export_fallback_failed', e2);
+      return [];
+    }
+  };
   const year = String((opts.year ?? new Date().getFullYear()));
   const adminEmail = String(opts.adminEmail || '').trim().toLowerCase(); // kept for potential auth headers
   const wb = XLSX.utils.book_new();
@@ -47,6 +110,29 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
       }
     ])
   );
+  // Business lookup for consents export enrichment
+  const [apiBusinesses, fbBusinesses, userBusinesses] = await Promise.all([
+    tryFetchJson('/api/businesses').catch(() => []),
+    fetchFirebaseBusinesses(),
+    fetchUserBusinesses(),
+  ]);
+  const bizMap = new Map(
+    ([...(Array.isArray(apiBusinesses) ? apiBusinesses : []), ...(Array.isArray(fbBusinesses) ? fbBusinesses : [])]).map((b: any) => [
+      String(b.id || b.businessId || b.business_id || b.businessid || b.toba_businessid || ''),
+      String(b.name || b.business_name || b.code || b.displayName || b.legal_name || b.business || ''),
+    ])
+  );
+  const userBizMap = new Map<string, string>();
+  for (const ub of Array.isArray(userBusinesses) ? userBusinesses : []) {
+    const email = String(ub.email || '').trim().toLowerCase();
+    const bid = String(ub.businessId || ub.business_id || '').trim();
+    if (email && bid) userBizMap.set(email, bid);
+  }
+  // Batch lookup for consents export enrichment
+  const batches = await fetchBatches();
+  const batchMap = new Map(
+    (Array.isArray(batches) ? batches : []).map((b: any) => [String(b.id || b.toba_batchid || b.batchId || ''), String(b.name || b.toba_name || '')])
+  );
 
   // Add Acknowledgements sheet (robust, business + user + batch + document)
   try {
@@ -59,7 +145,7 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
       acknowledged: r.acknowledged ?? '',
       acknowledgedAt: String(r.acknowledgedAt || ''),
       businessId: r.businessId != null ? String(r.businessId) : (recMap.get(recKey(r.batchId, r.email))?.businessId || ''),
-      businessName: String(r.businessName || ''),
+      businessName: String(r.businessName || bizMap.get(String(r.businessId || recMap.get(recKey(r.batchId, r.email))?.businessId || '')) || ''),
       batchId: String(r.batchId || ''),
       batchName: String(r.batchName || ''),
       batchCreatedAt: String(r.batchCreatedAt || ''),
@@ -81,6 +167,42 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
   } catch (e) {
     // Non-fatal if acks export is unavailable or user lacks permission
     console.warn('Acknowledgements export failed or unavailable', e);
+  }
+
+  // Consents sheet (row-level, includes batch, department, business, year)
+  try {
+    const consents = await fetchConsents();
+    const consRows = Array.isArray(consents) ? consents : [];
+    const normCons = consRows.map((c: any) => {
+      const email = String(c.email || c.user || '');
+      const batchId = c.batchId || c.batch_id;
+      const rec = (recMap.get(recKey(batchId, email)) || {}) as any;
+      const businessIdRaw = c.businessId ?? c.business_id ?? rec.businessId ?? rec.business_id ?? (email ? userBizMap.get(email.toLowerCase()) : '');
+      const businessId = businessIdRaw != null ? String(businessIdRaw) : '';
+      const businessName = c.businessName || c.business || (businessId ? bizMap.get(businessId) || '' : '');
+      const consentedAt = c.consentedAt || c.consented_at || c.createdAt || c.created_at || '';
+      const version = c.version ?? c.legalVersion ?? c.legal_version ?? '';
+      const batchName = c.batchName || c.batch_name || c.toba_name || batchMap.get(String(batchId || '')) || '';
+      const department = c.department || rec.department || '';
+      const receiptId = c.receiptId || c.receipt_id || c.id || '';
+      const yearFromTs = consentedAt ? String(new Date(consentedAt).getFullYear()) : year;
+      return {
+        year: yearFromTs,
+        businessName,
+        email,
+        batchName: String(batchName), 
+        consentedAt: String(consentedAt),       
+        batchId: String(batchId || ''),        
+        department: String(department),
+        businessId,      
+        version: version === null ? '' : String(version),
+        receiptId: String(receiptId),
+      };
+    });
+    const wsCons = XLSX.utils.json_to_sheet(normCons);
+    XLSX.utils.book_append_sheet(wb, wsCons, 'Consents');
+  } catch (e) {
+    console.warn('Consents export failed or unavailable', e);
   }
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

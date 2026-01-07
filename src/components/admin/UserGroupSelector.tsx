@@ -5,6 +5,7 @@ import {
   GraphUser,
   GraphGroup,
   getUsers,
+  fetchUsersPage,
   getGroups,
   getOrganizationStructure,
   UserSearchFilters,
@@ -24,26 +25,47 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
   const [localSearch, setLocalSearch] = useState<string>('');
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
-  const [usersPage, setUsersPage] = useState<number>(1);
+  const [selectedUsersMap, setSelectedUsersMap] = useState<Map<string, GraphUser>>(new Map());
+  const [selectedGroupsMap, setSelectedGroupsMap] = useState<Map<string, GraphGroup>>(new Map());
   const [groupsPage, setGroupsPage] = useState<number>(1);
   const [groupSearch, setGroupSearch] = useState<string>('');
+  const [usersNextLink, setUsersNextLink] = useState<string | null>(null);
+  const [loadingMoreUsers, setLoadingMoreUsers] = useState(false);
   const pageSize = 50;
 
   const loadData = async () => {
     setLoading(true);
     setHadError(null);
+    setUsersNextLink(null);
     try {
       const token = await getToken(['User.Read.All', 'Group.Read.All']);
       if (!token) throw new Error('No token available');
 
-      const [usersData, groupsData, structureData] = await Promise.all([
-        getUsers(token, filters),
+      const [{ items: usersData, nextLink }, groupsData, structureData] = await Promise.all([
+        fetchUsersPage(token, { ...filters, top: 200 }),
         getGroups(token),
         getOrganizationStructure(token)
       ]);
 
       setUsers(usersData);
+      setUsersNextLink(nextLink);
+      // Refresh any selected user details with latest fetched data
+      setSelectedUsersMap((prev) => {
+        const next = new Map(prev);
+        usersData.forEach((u) => {
+          if (next.has(u.id)) next.set(u.id, u);
+        });
+        return next;
+      });
+
       setGroups(groupsData);
+      setSelectedGroupsMap((prev) => {
+        const next = new Map(prev);
+        groupsData.forEach((g) => {
+          if (next.has(g.id)) next.set(g.id, g);
+        });
+        return next;
+      });
       setOrgStructure(structureData);
     } catch (error: any) {
       console.error('Failed to load user/group data:', error);
@@ -58,9 +80,33 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
     }
   };
 
+  const loadMoreUsers = async () => {
+    if (!usersNextLink) return;
+    setLoadingMoreUsers(true);
+    try {
+      const token = await getToken(['User.Read.All']);
+      if (!token) throw new Error('No token available');
+      const { items, nextLink } = await fetchUsersPage(token, undefined, usersNextLink);
+      setUsers((prev) => [...prev, ...items]);
+      setUsersNextLink(nextLink);
+      setSelectedUsersMap((prev) => {
+        const next = new Map(prev);
+        items.forEach((u) => {
+          if (next.has(u.id)) next.set(u.id, u);
+        });
+        return next;
+      });
+    } catch (error: any) {
+      console.error('Failed to load more users:', error);
+      const msg = typeof error?.message === 'string' ? error.message : 'Failed to load more users.';
+      showToast(msg, 'error');
+    } finally {
+      setLoadingMoreUsers(false);
+    }
+  };
+
   useEffect(() => {
     void loadData();
-    setUsersPage(1);
     setGroupsPage(1);
   }, [filters]);
 
@@ -74,27 +120,57 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
 
   useEffect(() => {
     onSelectionChange({
-      users: Array.from(selectedUsers).map(id => users.find(u => u.id === id)!).filter(Boolean),
-      groups: Array.from(selectedGroups).map(id => groups.find(g => g.id === id)!).filter(Boolean)
+      users: Array.from(selectedUsers)
+        .map(id => selectedUsersMap.get(id) || users.find(u => u.id === id))
+        .filter(Boolean),
+      groups: Array.from(selectedGroups)
+        .map(id => selectedGroupsMap.get(id) || groups.find(g => g.id === id))
+        .filter(Boolean)
     });
-  }, [selectedUsers, selectedGroups, users, groups]);
+  }, [selectedUsers, selectedGroups, users, groups, selectedUsersMap, selectedGroupsMap]);
 
   const toggleUser = (userId: string) => {
     const newSelection = new Set(selectedUsers);
+    const userObj = users.find(u => u.id === userId) || selectedUsersMap.get(userId);
     if (newSelection.has(userId)) {
       newSelection.delete(userId);
+      setSelectedUsersMap((prev) => {
+        const next = new Map(prev);
+        next.delete(userId);
+        return next;
+      });
     } else {
       newSelection.add(userId);
+      if (userObj) {
+        setSelectedUsersMap((prev) => {
+          const next = new Map(prev);
+          next.set(userId, userObj);
+          return next;
+        });
+      }
     }
     setSelectedUsers(newSelection);
   };
 
   const toggleGroup = (groupId: string) => {
     const newSelection = new Set(selectedGroups);
+    const groupObj = groups.find(g => g.id === groupId) || selectedGroupsMap.get(groupId);
     if (newSelection.has(groupId)) {
       newSelection.delete(groupId);
+      setSelectedGroupsMap((prev) => {
+        const next = new Map(prev);
+        next.delete(groupId);
+        return next;
+      });
     } else {
       newSelection.add(groupId);
+      if (groupObj) {
+        setSelectedGroupsMap((prev) => {
+          const next = new Map(prev);
+          next.set(groupId, groupObj);
+          return next;
+        });
+      }
     }
     setSelectedGroups(newSelection);
   };
@@ -116,11 +192,11 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
           </div>
         )}
       </div>
-      
+
       {/* Tab Navigation */}
       <div className="ugs-tabs" style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid #e0e0e0' }}>
         {(['users', 'groups', 'structure'] as const).map(t => (
-          <button 
+          <button
             key={t}
             className={`${tab === t ? 'btn sm' : 'btn ghost sm'} ${t === 'users' ? 'ugs-tab-users' : t === 'groups' ? 'ugs-tab-groups' : 'ugs-tab-structure'}`}
             onClick={() => setTab(t)}
@@ -137,10 +213,10 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
         <div className="ugs-filters-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <label className="small">Search:</label>
-            <input 
+            <input
               className="ugs-users-search"
-              type="text" 
-              placeholder="Name, email..." 
+              type="text"
+              placeholder="Name, email..."
               value={localSearch}
               onChange={e => setLocalSearch(e.target.value)}
               style={{ width: '100%', padding: 6, border: '1px solid #ddd', borderRadius: 4 }}
@@ -148,8 +224,8 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
           </div>
           <div>
             <label className="small">Department:</label>
-            <select 
-              value={filters.department || ''} 
+            <select
+              value={filters.department || ''}
               onChange={e => setFilters({...filters, department: e.target.value || undefined})}
               style={{ width: '100%', padding: 6, border: '1px solid #ddd', borderRadius: 4 }}
             >
@@ -159,8 +235,8 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
           </div>
           <div>
             <label className="small">Job Title:</label>
-            <select 
-              value={filters.jobTitle || ''} 
+            <select
+              value={filters.jobTitle || ''}
               onChange={e => setFilters({...filters, jobTitle: e.target.value || undefined})}
               style={{ width: '100%', padding: 6, border: '1px solid #ddd', borderRadius: 4 }}
             >
@@ -170,8 +246,8 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
           </div>
           <div>
             <label className="small">Location:</label>
-            <select 
-              value={filters.location || ''} 
+            <select
+              value={filters.location || ''}
               onChange={e => setFilters({...filters, location: e.target.value || undefined})}
               style={{ width: '100%', padding: 6, border: '1px solid #ddd', borderRadius: 4 }}
             >
@@ -187,7 +263,7 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
         <div className="ugs-users-list" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {/* Users search */}
           <div style={{ marginBottom: 12 }}>
-            <input 
+            <input
               className="ugs-users-search"
               type="text"
               placeholder="Search users (name or email)"
@@ -201,7 +277,7 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
             <button className="btn ghost sm ugs-users-clear" onClick={() => setSelectedUsers(new Set())}>Clear</button>
             <span className="small muted ugs-users-selected-count">Selected: {selectedUsers.size}</span>
           </div>
-          {users.slice(0, usersPage * pageSize).map(user => (
+          {users.map(user => (
             <div
               key={user.id}
               onClick={() => toggleUser(user.id)}
@@ -221,10 +297,10 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
               </div>
             </div>
           ))}
-          {(usersPage * pageSize) < users.length && (
+          {usersNextLink && (
             <div style={{ padding: 8, textAlign: 'center' }}>
-              <button className="btn ghost sm" onClick={() => setUsersPage(p => p + 1)}>Load more</button>
-              <div className="small muted" style={{ marginTop: 6 }}>{Math.min(usersPage * pageSize, users.length)} of {users.length}</div>
+              <button className="btn ghost sm" disabled={loadingMoreUsers} onClick={() => void loadMoreUsers()}>{loadingMoreUsers ? 'Loading...' : 'Load more'}</button>
+              <div className="small muted" style={{ marginTop: 6 }}>Loaded {users.length} users</div>
             </div>
           )}
         </div>
@@ -235,7 +311,7 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
         <div className="ugs-groups-list" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {/* Groups search (client-side filter) */}
           <div style={{ marginBottom: 12 }}>
-            <input 
+            <input
               className="ugs-groups-search"
               type="text"
               placeholder="Search groups"
@@ -258,10 +334,10 @@ export const UserGroupSelector: React.FC<{ onSelectionChange: (selection: any) =
             .slice(0, groupsPage * pageSize)
             .map(group => (
             <div key={group.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderBottom: '1px solid #f0f0f0' }}>
-              <input 
-                type="checkbox" 
-                checked={selectedGroups.has(group.id)} 
-                onChange={() => toggleGroup(group.id)} 
+              <input
+                type="checkbox"
+                checked={selectedGroups.has(group.id)}
+                onChange={() => toggleGroup(group.id)}
               />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500 }}>{group.displayName}</div>

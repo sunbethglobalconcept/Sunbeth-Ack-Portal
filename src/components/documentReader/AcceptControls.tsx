@@ -25,7 +25,7 @@ const AckStatement: React.FC<{ userName?: string; ack: boolean; onAckChange: (ch
       <>
         <span>I </span>
         <strong>{userName}</strong>
-        <span> have read and understood this document.</span>
+        <span>have read, understood, and agree to comply with the terms of this document</span>
       </>
     ) : (
       'I have read and understood this document.'

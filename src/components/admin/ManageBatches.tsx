@@ -1,6 +1,6 @@
 /* eslint-disable max-lines-per-function */
 /* eslint-disable complexity */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Modal from '../Modal';
 import { getApiBase, isSQLiteEnabled } from '../../utils/runtimeConfig';
 import { confirmDialog, showToast } from '../../utils/alerts';
@@ -13,9 +13,12 @@ const sqliteOn = () => isSQLiteEnabled() && !!apiBase();
 const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; onClone: (id: string) => void }>
   = ({ canEdit, onEdit, onClone }) => {
   const [items, setItems] = useState<Array<BatchRow>>([]);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Record<string, { name: string; startDate: string; dueDate: string; status: string; description: string }>>({});
-  const [recOpen, setRecOpen] = useState<{ open: boolean; forBatch?: string; rows: any[] }>({ open: false, rows: [] });
+  const [recOpen, setRecOpen] = useState<{ open: boolean; forBatch?: string; rows: any[]; error?: boolean }>({ open: false, rows: [] });
+  const [recLoading, setRecLoading] = useState(false);
+  const recReqRef = useRef(0);
 
   const load = async () => {
     if (!sqliteOn()) return;
@@ -23,7 +26,10 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
       const res = await fetch(`${apiBase()}/api/batches`);
       const j = await res.json();
       setItems(Array.isArray(j) ? j : []);
-    } catch { setItems([]); }
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -43,20 +49,32 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
   };
 
   const openRecipients = async (id: string) => {
+    const reqId = ++recReqRef.current;
+    setRecOpen({ open: true, forBatch: id, rows: [], error: false });
+    setRecLoading(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
       // Prefer batch-scoped endpoint; fallback to global list filter
-      const scoped = await fetch(`${apiBase()}/api/batches/${encodeURIComponent(id)}/recipients`);
+      const scoped = await fetch(`${apiBase()}/api/batches/${encodeURIComponent(id)}/recipients`, { signal: controller.signal });
       if (scoped.ok) {
         const rows = await scoped.json();
-        setRecOpen({ open: true, forBatch: id, rows: Array.isArray(rows) ? rows : [] });
+        if (reqId === recReqRef.current) setRecOpen({ open: true, forBatch: id, rows: Array.isArray(rows) ? rows : [], error: false });
         return;
       }
-      const res = await fetch(`${apiBase()}/api/recipients`);
+      const res = await fetch(`${apiBase()}/api/recipients?batchId=${encodeURIComponent(id)}&limit=200`, { signal: controller.signal });
+      if (!res.ok) throw new Error('recipients_failed');
       const j = await res.json();
-      const rows = (Array.isArray(j) ? j : []).filter((r: any) => String(r.batchId) === String(id));
-      setRecOpen({ open: true, forBatch: id, rows });
+      const rows = Array.isArray(j) ? j : [];
+      if (reqId === recReqRef.current) setRecOpen({ open: true, forBatch: id, rows, error: false });
     } catch {
-      setRecOpen({ open: true, forBatch: id, rows: [] });
+      if (reqId === recReqRef.current) {
+        setRecOpen({ open: true, forBatch: id, rows: [], error: true });
+        showToast('Failed to load recipients (timeout or network)', 'error');
+      }
+    } finally {
+      clearTimeout(timer);
+      if (reqId === recReqRef.current) setRecLoading(false);
     }
   };
 
@@ -85,7 +103,12 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
   return (
     <>
       <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6 }} className="batch-list">
-        {items.length === 0 ? (
+        {loadError ? (
+          <div className="small muted" style={{ padding: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span>Could not load batches.</span>
+            <button className="btn ghost sm" onClick={load}>Retry</button>
+          </div>
+        ) : items.length === 0 ? (
           <div className="small muted" style={{ padding: 8 }}>No batches.</div>
         ) : items.map(b => {
           const row = editing[b.toba_batchid];
@@ -128,9 +151,16 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
         })}
       </div>
       {/* Recipients Modal */}
-      <Modal open={recOpen.open} onClose={() => setRecOpen({ open: false, rows: [] })} title={`Recipients for Batch ${recOpen.forBatch || ''}`} width={700}>
-        {recOpen.rows.length === 0 ? (
-          <div className="small muted">No recipients found.</div>
+      <Modal open={recOpen.open} onClose={() => { recReqRef.current++; setRecOpen({ open: false, rows: [] }); setRecLoading(false); }} title={`Recipients for Batch ${recOpen.forBatch || ''}`} width={700}>
+        {recLoading ? (
+          <div className="small muted">Loading…</div>
+        ) : recOpen.rows.length === 0 ? (
+          <div className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>{recOpen.error ? 'Could not load recipients.' : 'No recipients found.'}</span>
+            {recOpen.forBatch && (
+              <button className="btn ghost sm" disabled={recLoading} onClick={() => openRecipients(recOpen.forBatch as string)}>Retry</button>
+            )}
+          </div>
         ) : (
           <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
             {recOpen.rows.map((r: any, i: number) => (

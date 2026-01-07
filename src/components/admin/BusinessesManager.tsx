@@ -1,12 +1,9 @@
 /* eslint-disable max-lines-per-function */
 import React, { useEffect, useState } from 'react';
-import { getApiBase } from '../../utils/runtimeConfig';
 import { confirmDialog, showToast } from '../../utils/alerts';
 import { createBusiness, deleteBusiness, updateBusiness, getBusinesses } from '../../services/dbService';
 
 type Biz = { id: string; name: string; code?: string; isActive?: boolean; description?: string };
-
-const apiBase = () => (getApiBase() as string) || '';
 
 const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   const [items, setItems] = useState<Biz[]>([]);
@@ -26,25 +23,28 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!canEdit || !apiBase()) return;
-    const name = form.name.trim(); if (!name) { showToast('Enter a business name', 'warning'); return; }
+    if (!canEdit) return;
+    const name = form.name.trim();
+    if (!name) { showToast('Enter a business name', 'warning'); return; }
     setBusy(true);
     try {
-      await createBusiness({ 
-        name, 
-        code: form.code || undefined, 
-        isActive: !!form.isActive, 
-        description: form.description || undefined 
+      await createBusiness({
+        name,
+        code: form.code || undefined,
+        isActive: !!form.isActive,
+        description: form.description || undefined
       });
       setForm({ name: '', code: '', isActive: true, description: '' });
       await load();
       showToast('Business created', 'success');
-    } catch { showToast('Failed to create business', 'error'); }
+    } catch (e: any) {
+      showToast(e?.message || 'Failed to create business', 'error');
+    }
     finally { setBusy(false); }
   };
 
   const save = async (id: string) => {
-    if (!canEdit || !apiBase()) return;
+    if (!canEdit) return;
     const row = editRow[id]; if (!row) return;
     setBusy(true);
     try {
@@ -52,12 +52,12 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
       setEditRow(prev => { const p = { ...prev }; delete p[id]; return p; });
       await load();
       showToast('Business updated', 'success');
-    } catch { showToast('Failed to update business', 'error'); }
+    } catch (e: any) { showToast(e?.message || 'Failed to update business', 'error'); }
     finally { setBusy(false); }
   };
 
   const del = async (id: string) => {
-    if (!canEdit || !apiBase()) return;
+    if (!canEdit) return;
     const ok = await confirmDialog('Delete this business?', 'This will unassign it from any recipients.', 'Delete', 'Cancel', { icon: 'warning' as any });
     if (!ok) return;
     setBusy(true);
@@ -65,11 +65,10 @@ const BusinessesManager: React.FC<{ canEdit: boolean }> = ({ canEdit }) => {
       await deleteBusiness(id);
       await load();
       showToast('Business deleted', 'success');
-    } catch { showToast('Failed to delete business', 'error'); }
+    } catch (e: any) { showToast(e?.message || 'Failed to delete business', 'error'); }
     finally { setBusy(false); }
   };
 
-  if (!apiBase()) return <div className="small muted">Backend API not configured.</div>;
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Create form */}

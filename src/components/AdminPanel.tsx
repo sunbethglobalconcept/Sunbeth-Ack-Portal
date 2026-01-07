@@ -380,13 +380,13 @@ const AdminPanel: React.FC = () => {
     if (isSuperAdmin) {
       base.push({ id: 'diagnostics', label: 'System Diagnostics', icon: '🧪' } as any);
     }
-    // // Always show Document Library tab for admins, after Users tab
-    // const usersIdx = base.findIndex(t => t.id === 'users');
-    // if (usersIdx !== -1) {
-    //   base.splice(usersIdx + 1, 0, { id: 'library', label: 'Document Library', icon: '📂' });
-    // } else {
-    //   base.push({ id: 'library', label: 'Document Library', icon: '📂' });
-    // }
+    // Always show Document Library tab for admins, after Users tab
+    const usersIdx = base.findIndex(t => t.id === 'users');
+    if (usersIdx !== -1) {
+      base.splice(usersIdx + 1, 0, { id: 'library', label: 'Document Library', icon: '📂' });
+    } else {
+      base.push({ id: 'library', label: 'Document Library', icon: '📂' });
+    }
     return base;
   })();
   const sqliteEnabled = isSQLiteEnabled();

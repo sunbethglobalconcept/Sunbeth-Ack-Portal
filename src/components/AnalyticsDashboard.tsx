@@ -6,6 +6,7 @@ import { exportAnalyticsCsvFull } from '../utils/csvExport';
 import { useAuth } from '../context/AuthContext';
 import { getBusinesses } from '../services/dbService';
 import BusinessAcknowledgementReport from './BusinessAcknowledgementReport';
+import EmployeeConsentReport from './EmployeeConsentReport';
 
 // Types for analytics data
 interface KPIData {
@@ -43,6 +44,14 @@ interface DocumentStats {
   acknowledged: number;
   pending: number;
   avgTimeToComplete: number;
+}
+
+interface ConsentSummary {
+  totalConsents: number;
+  uniqueUsers: number;
+  lastConsentedAt: string | null;
+  last7d: number;
+  last30d: number;
 }
 
 // KPI Card Component
@@ -287,6 +296,7 @@ const AnalyticsDashboard: React.FC = () => {
     compliance: ComplianceData[];
     trends: TrendData[];
     documents: DocumentStats[];
+    consentSummary?: ConsentSummary | null;
   } | null>(null);
   const [filters, setFilters] = useState({});
   const [reportYear, setReportYear] = useState<number>(new Date().getFullYear());
@@ -302,6 +312,7 @@ const AnalyticsDashboard: React.FC = () => {
     const local = 'http://127.0.0.1:4000';
     return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
   };
+  const getFirebaseRtdUrl = () => (process.env.REACT_APP_FIREBASE_RTD_URL || 'https://sunbeth-ack-portal-default-rtdb.firebaseio.com').replace(/\/$/, '');
   const tryFetchJson = async (path: string) => {
     const bases = getApiBases();
     let lastErr: any = null;
@@ -314,6 +325,32 @@ const AnalyticsDashboard: React.FC = () => {
     if (lastErr) throw lastErr;
     throw new Error('All API base candidates failed: ' + bases.join(', '));
   };
+  const fetchUserBusinesses = async () => {
+    try {
+      const url = `${getFirebaseRtdUrl()}/tables/user_businesses.json`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`user_businesses_fetch_failed_${r.status}`);
+      const json = await r.json();
+      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      console.warn('user_businesses_fetch_failed', e);
+      return [];
+    }
+  };
+  const fetchFirebaseBusinesses = async () => {
+    try {
+      const url = `${getFirebaseRtdUrl()}/tables/businesses.json`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`businesses_fetch_failed_${r.status}`);
+      const json = await r.json();
+      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      console.warn('firebase_businesses_fetch_failed', e);
+      return [];
+    }
+  };
   // Simple search & pagination states
   const [compSearch, setCompSearch] = useState('');
   const [compPage, setCompPage] = useState(1);
@@ -321,6 +358,8 @@ const AnalyticsDashboard: React.FC = () => {
   const [docSearch, setDocSearch] = useState('');
   const [docPage, setDocPage] = useState(1);
   const docPageSize = 10;
+  const [compliancePage, setCompliancePage] = useState(1);
+  const compliancePageSize = 6;
   const { account } = useAuth();
 
   // Export full acknowledgement report (business + user + batch + document details)
@@ -375,14 +414,18 @@ const AnalyticsDashboard: React.FC = () => {
           const df = (filters as any).department; if (df && df !== 'all') q.push(`department=${encodeURIComponent(df)}`);
           const gf = (filters as any).group; if (gf && gf !== 'all') q.push(`primaryGroup=${encodeURIComponent(gf)}`);
           const qs = q.length ? `?${q.join('&')}` : '';
-          const [statsRes, recRes, bizRes, compRes, docRes, trendRes, actRes] = await Promise.all([
+          const [statsRes, recRes, bizRes, compRes, docRes, trendRes, actRes, consentRes, userBizRes, fbBizRes, ackRes] = await Promise.all([
             tryFetchJson(`/api/stats${qs}`),
             tryFetchJson(`/api/recipients${qs}`),
             getBusinesses().catch(() => []),
             tryFetchJson(`/api/compliance${qs}`).catch(() => []),
             tryFetchJson(`/api/doc-stats${qs}`).catch(() => []),
             tryFetchJson(`/api/trends${qs}`).catch(() => ({ completions: [], newBatches: [], activeUsers: [] })),
-            tryFetchJson(`/api/activity/recent?limit=20`).catch(() => [])
+            tryFetchJson(`/api/activity/recent?limit=20`).catch(() => []),
+            tryFetchJson(`/api/consents/summary${qs}`).catch(() => null),
+            fetchUserBusinesses(),
+            fetchFirebaseBusinesses(),
+            tryFetchJson(`/api/ack-report${qs ? `${qs}&` : '?'}limit=5000`).catch(() => []),
           ]);
           setRecipients(Array.isArray(recRes) ? recRes : []);
           setActivities(Array.isArray(actRes) ? actRes : []);
@@ -414,30 +457,113 @@ const AnalyticsDashboard: React.FC = () => {
               })
             : [];
 
-          // Build business lookup for mapping IDs -> names
+          // user -> business mapping from firebase selection during acknowledgement
+          const userBizMap = new Map<string, string>();
+          for (const ub of Array.isArray(userBizRes) ? userBizRes : []) {
+            const email = String(ub.email || '').trim().toLowerCase();
+            const bid = String(ub.businessId || ub.business_id || '').trim();
+            if (email && bid) userBizMap.set(email, bid);
+          }
+
+          // Build business lookup for mapping IDs -> names (API + Firebase fallback)
           const businessMap = new Map<string, string>();
-          for (const b of Array.isArray(bizRes) ? bizRes : []) {
-            const id = String(b.id || b.business_id || b.businessid || b.toba_businessid || '').trim();
-            const name = String(b.name || b.business_name || b.legal_name || b.toba_name || b.displayName || '').trim();
+          const allBusinesses = [
+            ...(Array.isArray(bizRes) ? bizRes : []),
+            ...(Array.isArray(fbBizRes) ? fbBizRes : []),
+          ];
+          for (const b of allBusinesses) {
+            const id = String(b.id || b.businessId || b.business_id || b.businessid || b.toba_businessid || '').trim();
+            const name = String(b.name || b.business_name || b.legal_name || b.toba_name || b.displayName || b.code || b.business || '').trim();
             if (id && name) businessMap.set(id, name);
           }
+          // Enrich business map from acknowledgement rows
+          const ackRows = Array.isArray((ackRes as any)?.items) ? (ackRes as any).items : Array.isArray(ackRes) ? ackRes : [];
+          for (const r of ackRows) {
+            const bid = String(r.businessId || r.business_id || r.toba_businessid || '').trim();
+            const bname = String(r.businessName || r.business || '').trim();
+            if (bid && bname && !businessMap.has(bid)) businessMap.set(bid, bname);
+          }
+
+          // Normalize “unspecified”/empty labels out so we can replace them
+          const cleanName = (raw?: string) => {
+            const val = (raw ?? '').trim();
+            if (!val) return undefined;
+            if (/^unspecified$/i.test(val)) return undefined;
+            if (val === '—') return undefined;
+            return val;
+          };
+
+          // Build department -> business inference from recipients (most frequent biz per department)
+          const deptBizCounts = new Map<string, Map<string, number>>();
+          const deptBizLabel = new Map<string, string>();
+          const recipientsArr = Array.isArray(recRes) ? recRes : [];
+          // Also fold in ack rows for department-to-business inference
+          const deptBizSourceRows = [...recipientsArr, ...ackRows];
+          const getBizId = (r: any) => String(
+            r.businessId || r.business_id || r.businessid || r.toba_businessid || r._toba_business_value || ''
+          ).trim();
+          const getBizName = (r: any) => cleanName(
+            r.businessName || r.business || r.business_name || r.toba_businessname || r.toba_name
+          );
+          for (const r of deptBizSourceRows) {
+            const dept = String(r.department || r.toba_Department || '').trim();
+            if (!dept) continue;
+            const email = String(r.email || r.toba_Email || r.user || '').trim().toLowerCase();
+            const bid = getBizId(r) || (email ? userBizMap.get(email) || '' : '');
+            const bname = getBizName(r) || (bid && businessMap.get(bid)) || undefined;
+            const key = bid || bname || '';
+            if (!key) continue;
+            if (!deptBizCounts.has(dept)) deptBizCounts.set(dept, new Map());
+            const counts = deptBizCounts.get(dept)!;
+            counts.set(key, (counts.get(key) || 0) + 1);
+            if (bname) deptBizLabel.set(`${dept}::${key}`, bname);
+          }
+
+          const deptBizResolved = new Map<string, { businessId?: string; businessName?: string }>();
+          for (const [dept, counts] of deptBizCounts.entries()) {
+            let topKey = '';
+            let topCount = 0;
+            for (const [k, ct] of counts.entries()) {
+              if (ct > topCount) { topKey = k; topCount = ct; }
+            }
+            if (topKey) {
+              const bizId = businessMap.has(topKey) ? topKey : '';
+              const bizName = businessMap.get(topKey) || deptBizLabel.get(`${dept}::${topKey}`) || cleanName(topKey);
+              deptBizResolved.set(dept, {
+                businessId: bizId || undefined,
+                businessName: bizName || undefined,
+              });
+            }
+          }
+
+          const selectedBizId = (filters as any).businessId;
+          const selectedBizName = selectedBizId && selectedBizId !== 'all'
+            ? (businessMap.get(String(selectedBizId)) || String(selectedBizId))
+            : undefined;
 
           const compliance = Array.isArray(compRes)
             ? (compRes as any[]).map((c: any) => {
-                const businessId = String(c.businessId || c.business_id || c.toba_businessid || c.businessid || '').trim();
-                const mappedName = businessId && businessMap.has(businessId) ? businessMap.get(businessId) : undefined;
-                const fallbackName = c.businessName || c.business || c.business_name || undefined;
+                const businessIdRaw = String(c.businessId || c.business_id || c.toba_businessid || c.businessid || '').trim();
+                const mappedName = businessIdRaw && businessMap.has(businessIdRaw) ? businessMap.get(businessIdRaw) : undefined;
+                const fallbackName = cleanName(c.businessName || c.business || c.business_name || undefined);
+                const dept = String(c.department || c.dept || '—');
+                const inferred = deptBizResolved.get(dept);
+                const businessId = businessIdRaw || inferred?.businessId || undefined;
+                const businessName = mappedName
+                  || (businessId && businessMap.get(businessId))
+                  || fallbackName
+                  || inferred?.businessName
+                  || selectedBizName
+                  || undefined;
                 return {
-                  department: String(c.department || c.dept || '—'),
+                  department: dept,
                   totalUsers: safeNum(c.totalUsers ?? c.users ?? c.total ?? 0),
                   completed: safeNum(c.completed ?? c.done ?? 0),
                   pending: safeNum(c.pending ?? 0),
                   overdue: safeNum(c.overdue ?? 0),
                   completionRate: safeNum(c.completionRate ?? c.rate ?? 0),
-                  businessId: businessId || undefined,
-                  businessName: mappedName
-                    || (typeof fallbackName === 'string' ? String(fallbackName) : undefined)
-                    || (businessId ? businessId : undefined),
+                  businessId,
+                  businessName: businessName || '—',
                 } as ComplianceData;
               })
             : [];
@@ -451,7 +577,14 @@ const AnalyticsDashboard: React.FC = () => {
               newBatches: Number(((trendRes as any).newBatches?.[idx]?.count) || 0),
               activeUsers: Number(((trendRes as any).activeUsers?.[idx]?.count) || 0)
             })) : [],
-            documents: docs
+            documents: docs,
+            consentSummary: consentRes ? {
+              totalConsents: safeNum((consentRes as any).totalConsents),
+              uniqueUsers: safeNum((consentRes as any).uniqueUsers),
+              lastConsentedAt: (consentRes as any).lastConsentedAt || null,
+              last7d: safeNum((consentRes as any).last7d),
+              last30d: safeNum((consentRes as any).last30d),
+            } : null,
           };
           setData(live);
           if (typeof window !== 'undefined') {
@@ -466,7 +599,7 @@ const AnalyticsDashboard: React.FC = () => {
       } catch (e) {
         setData({
           kpis: { totalBatches: 0, activeBatches: 0, totalUsers: 0, completionRate: 0, overdueBatches: 0, avgCompletionTime: 0, lastUpdated: new Date().toISOString() },
-          compliance: [], trends: [], documents: []
+          compliance: [], trends: [], documents: [], consentSummary: null
         });
         if (typeof window !== 'undefined') {
           try {
@@ -557,16 +690,67 @@ const AnalyticsDashboard: React.FC = () => {
       </div>
 
       {/* Charts Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 32 }}>
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px 0', fontSize: 18 }}>📈 Completion Trends (30 days)</h3>
           <TrendChart data={data.trends} height={250} />
         </div>
         <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: 18 }}>🎯 Compliance Status</h3>
-          <ComplianceChart data={data.compliance} height={250} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 18 }}>🎯 Compliance Status</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button className="btn ghost sm" disabled={compliancePage <= 1} onClick={() => setCompliancePage((p) => Math.max(1, p - 1))}>◀ Prev</button>
+              <span className="small muted">Page {compliancePage}</span>
+              <button
+                className="btn ghost sm"
+                disabled={compliancePage * compliancePageSize >= (data.compliance || []).length}
+                onClick={() => setCompliancePage((p) => p + 1)}
+              >
+                Next ▶
+              </button>
+            </div>
+          </div>
+          {data.compliance.length === 0 ? (
+            <div className="small muted">No compliance data yet.</div>
+          ) : (
+            (() => {
+              const { items } = paginate(data.compliance, compliancePage, compliancePageSize);
+              return <ComplianceChart data={items} height={260} />;
+            })()
+          )}
         </div>
       </div>
+
+      {data.consentSummary && (
+        <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 18 }}>🛡️ Consent Insights (Premium)</h3>
+            <span className="small" style={{ padding: '4px 8px', borderRadius: 12, background: '#f0f4ff', color: '#3451b2', fontWeight: 600 }}>Premium</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e3e6ed', borderRadius: 10, padding: 12 }}>
+              <div className="small muted">Total Consents</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{safeNum(data.consentSummary.totalConsents).toLocaleString()}</div>
+            </div>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e3e6ed', borderRadius: 10, padding: 12 }}>
+              <div className="small muted">Unique Users</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{safeNum(data.consentSummary.uniqueUsers).toLocaleString()}</div>
+            </div>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e3e6ed', borderRadius: 10, padding: 12 }}>
+              <div className="small muted">Consents (30d)</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#28a745' }}>{safeNum(data.consentSummary.last30d).toLocaleString()}</div>
+            </div>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e3e6ed', borderRadius: 10, padding: 12 }}>
+              <div className="small muted">Consents (7d)</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#17a2b8' }}>{safeNum(data.consentSummary.last7d).toLocaleString()}</div>
+            </div>
+            <div style={{ background: '#f8f9fa', border: '1px solid #e3e6ed', borderRadius: 10, padding: 12 }}>
+              <div className="small muted">Last Consent</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{data.consentSummary.lastConsentedAt ? formatRelative(data.consentSummary.lastConsentedAt) : '—'}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Department Compliance Table (live: currently empty until we derive from recipients/acks) */}
       <div className="card" style={{ padding: 20, marginBottom: 32 }}>
@@ -627,6 +811,9 @@ const AnalyticsDashboard: React.FC = () => {
       <div className="card" style={{ padding: 20, marginBottom: 32 }}>
         <BusinessAcknowledgementReport />
       </div>
+
+      {/* Employee consent rollup */}
+      <EmployeeConsentReport />
 
       {/* Live recipients preview (filtered) */}
       {recipients && recipients.length > 0 && (

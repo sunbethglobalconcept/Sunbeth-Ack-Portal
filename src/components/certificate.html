@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Certificate</title>
+  <link rel="stylesheet" href="certificate.css" />
+  <style>
+    /* Additional inline styles can go here */
+    @page {
+  size: A4;
+  margin: 0;
+}
+
+body {
+  margin: 0;
+  background: #e5e7eb;
+  font-family: "Inter", serif;
+}
+
+.certificate {
+  position: relative;
+  width: 794px;
+  height: 1123px;
+  margin: 20px auto;
+  background: white;
+}
+
+/* ===== FRAME ===== */
+.frame-outer {
+  position: absolute;
+  inset: 40px;
+  border: 4px solid #0f4c81;
+  border-radius: 14px;
+}
+
+.frame-inner {
+  position: absolute;
+  inset: 52px;
+  border: 1px solid #0f172a;
+  border-radius: 10px;
+}
+
+/* ===== WATERMARK ===== */
+.watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 120px;
+  font-weight: 700;
+  color: #0f4c81;
+  opacity: 0.04;
+  transform: rotate(-30deg);
+  pointer-events: none;
+}
+
+/* ===== HEADER ===== */
+.header {
+  position: absolute;
+  top: 80px;
+  width: 100%;
+  text-align: center;
+}
+
+.logo {
+  max-height: 60px;
+  margin-bottom: 12px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 30px;
+  color: #0f4c81;
+}
+
+/* ===== IDENTITY ===== */
+.identity {
+  position: absolute;
+  top: 230px;
+  width: 100%;
+  text-align: center;
+}
+
+.identity .name {
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.identity .subtitle {
+  margin-top: 8px;
+  font-size: 13px;
+  font-style: italic;
+  color: #475569;
+}
+
+.identity .batch {
+  margin-top: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f4c81;
+}
+
+.identity .date {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ===== GRID ===== */
+.grid {
+  position: absolute;
+  top: 420px;
+  left: 100px;
+  right: 100px;
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  row-gap: 12px;
+}
+
+.grid span:first-child {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.grid span:last-child {
+  color: #334155;
+}
+
+.email {
+  word-break: break-word;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+  position: absolute;
+  bottom: 160px;
+  left: 100px;
+  right: 100px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+}
+
+.qr img {
+  width: 90px;
+}
+
+.qr-text {
+  font-size: 9px;
+  color: #475569;
+}
+
+.seal {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f4c81;
+  border: 2px solid #0f4c81;
+  padding: 12px;
+  border-radius: 50%;
+  width: 110px;
+  height: 110px;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.signature {
+  text-align: center;
+  font-size: 10px;
+  color: #475569;
+}
+
+.signature .brand {
+  font-weight: 600;
+}
+
+/* ===== CERT ID ===== */
+.cert-id {
+  position: absolute;
+  bottom: 80px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  color: #64748b;
+}
+
+  </style>
+</head>
+<body>
+  <div class="certificate">
+
+    <!-- WATERMARK -->
+    <div class="watermark">ACKNOWLEDGED</div>
+
+    <!-- FRAME -->
+    <div class="frame-outer"></div>
+    <div class="frame-inner"></div>
+
+    <!-- HEADER -->
+    <header class="header">
+      <img class="logo" src="{{brandLogoUrl}}" alt="Logo" />
+      <h1>Certificate of Completion</h1>
+    </header>
+
+    <!-- IDENTITY -->
+    <section class="identity">
+      <div class="name">{{userName}}</div>
+      <div class="subtitle">has completed all required acknowledgements for</div>
+      <div class="batch">{{batchName}}</div>
+      <div class="date">Completed on {{completedOn}}</div>
+    </section>
+
+    <!-- INFO GRID -->
+    <section class="grid">
+      <div class="row"><span>Business</span><span>{{business}}</span></div>
+      <div class="row"><span>Department</span><span>{{department}}</span></div>
+      <div class="row"><span>Job Title</span><span>{{jobTitle}}</span></div>
+      <div class="row"><span>Location</span><span>{{location}}</span></div>
+      <div class="row"><span>Primary Group</span><span>{{primaryGroup}}</span></div>
+      <div class="row"><span>Email</span><span class="email">{{email}}</span></div>
+      <div class="row"><span>Documents</span><span>{{documents}}</span></div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+      <div class="qr">
+        <img src="{{qrCode}}" />
+        <div class="qr-text">Scan to verify</div>
+      </div>
+
+      <div class="seal">CERTIFIED</div>
+
+      <div class="signature">
+        <div class="brand">{{brandName}}</div>
+        <div class="sig-date">{{completedOn}}</div>
+      </div>
+    </footer>
+
+    <!-- CERT ID -->
+    <div class="cert-id">
+      Certificate ID: {{certificateId}}
+    </div>
+
+  </div>
+</body>
+</html>

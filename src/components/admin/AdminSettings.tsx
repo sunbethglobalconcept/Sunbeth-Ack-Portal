@@ -31,7 +31,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
 
   // Legal consent document
   const policiesEnabled = isPoliciesEnabled();
-  const [legalDoc, setLegalDoc] = useState<{ fileId: number | null; url: string | null; name: string | null }>({ fileId: null, url: null, name: null });
+  const [legalDoc, setLegalDoc] = useState<{ fileId: number | null; url: string | null; name: string | null; allowPreview: boolean; allowDeny: boolean; uploadCompletionPdf: boolean }>({ fileId: null, url: null, name: null, allowPreview: false, allowDeny: false, uploadCompletionPdf: false });
   const [legalBusy, setLegalBusy] = useState<boolean>(false);
   const [reminderBusy, setReminderBusy] = useState<boolean>(false);
   const [reminderPreview, setReminderPreview] = useState<{ actionable: number; skippedRecent: number; error?: string; enabled?: boolean } | null>(null);
@@ -89,7 +89,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
         if (!apiBase) return;
         const res = await fetch(`${apiBase}/api/settings/legal-consent`, { cache: 'no-store' });
         const j = await res.json();
-        setLegalDoc({ fileId: j?.fileId ?? null, url: j?.url ? (apiBase + j.url) : null, name: j?.name ?? null });
+        setLegalDoc({ fileId: j?.fileId ?? null, url: j?.url ? (apiBase + j.url) : null, name: j?.name ?? null, allowPreview: !!j?.allowPreview, allowDeny: !!j?.allowDeny, uploadCompletionPdf: !!j?.uploadCompletionPdf });
   } catch { /* ignore */ }
     })();
   }, [apiBase]);
@@ -316,9 +316,9 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
                   const up = await fetch(`${apiBase}/api/files/upload`, { method: 'POST', body: fd });
                   const uj = await up.json();
                   if (!up.ok || !uj?.id) { showToast('Upload failed', 'error'); return; }
-                  const put = await fetch(`${apiBase}/api/settings/legal-consent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: uj.id }) });
+                  const put = await fetch(`${apiBase}/api/settings/legal-consent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: uj.id, allowPreview: legalDoc.allowPreview, allowDeny: legalDoc.allowDeny, uploadCompletionPdf: legalDoc.uploadCompletionPdf }) });
                   if (!put.ok) { showToast('Save failed', 'error'); return; }
-                  setLegalDoc({ fileId: uj.id, url: `${apiBase}/api/files/${uj.id}`, name: file.name });
+                  setLegalDoc({ fileId: uj.id, url: `${apiBase}/api/files/${uj.id}`, name: file.name, allowPreview: legalDoc.allowPreview, allowDeny: legalDoc.allowDeny, uploadCompletionPdf: legalDoc.uploadCompletionPdf });
                   showToast('Legal document saved', 'success');
                 } catch {
                   showToast('Upload failed', 'error');
@@ -333,15 +333,42 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
                 try {
                   if (!apiBase) return;
                   setLegalBusy(true);
-                  const put = await fetch(`${apiBase}/api/settings/legal-consent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: null }) });
+                  const put = await fetch(`${apiBase}/api/settings/legal-consent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: null, allowPreview: legalDoc.allowPreview, allowDeny: legalDoc.allowDeny, uploadCompletionPdf: legalDoc.uploadCompletionPdf }) });
                   if (!put.ok) { showToast('Failed to clear', 'error'); return; }
-                  setLegalDoc({ fileId: null, url: null, name: null });
+                  setLegalDoc({ fileId: null, url: null, name: null, allowPreview: legalDoc.allowPreview, allowDeny: legalDoc.allowDeny, uploadCompletionPdf: legalDoc.uploadCompletionPdf });
                   showToast('Cleared legal document', 'success');
                 } catch { showToast('Failed to clear', 'error'); }
                 finally { setLegalBusy(false); }
               }}>Clear</button>
             )}
           </div>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={legalDoc.allowPreview} disabled={!canEdit} onChange={(e) => setLegalDoc(prev => ({ ...prev, allowPreview: e.target.checked }))} />
+            <span>Allow Preview PDF in dialog</span>
+          </label>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={legalDoc.allowDeny} disabled={!canEdit} onChange={(e) => setLegalDoc(prev => ({ ...prev, allowDeny: e.target.checked }))} />
+            <span>Show Deny button</span>
+          </label>
+          <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={legalDoc.uploadCompletionPdf} disabled={!canEdit} onChange={(e) => setLegalDoc(prev => ({ ...prev, uploadCompletionPdf: e.target.checked }))} />
+            <span>Upload completion email PDF to SharePoint (when configured)</span>
+          </label>
+          {canEdit && (
+            <button className="btn sm" disabled={legalBusy} onClick={async () => {
+              try {
+                if (!apiBase) return;
+                setLegalBusy(true);
+                const body = { fileId: legalDoc.fileId, allowPreview: legalDoc.allowPreview, allowDeny: legalDoc.allowDeny, uploadCompletionPdf: legalDoc.uploadCompletionPdf };
+                const put = await fetch(`${apiBase}/api/settings/legal-consent`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (!put.ok) { showToast('Save failed', 'error'); return; }
+                showToast('Consent settings saved', 'success');
+              } catch { showToast('Save failed', 'error'); }
+              finally { setLegalBusy(false); }
+            }}>Save consent settings</button>
+          )}
         </div>
       </div>
 

@@ -26,6 +26,15 @@ export const getBrandLogoUrl = (): string | undefined => {
   return `${base}/brand/sunbeth-logo.png`;
 };
 
+// Certificate-specific logo: use plain mark only on certificates
+export const getCertificateLogoUrl = (): string | undefined => {
+  const envUrl = (process.env.REACT_APP_CERTIFICATE_LOGO_URL || '').trim();
+  if (envUrl) return envUrl;
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  // Default to the plain logo placed in public/brand
+  return `${base}/brand/sunbeth_plain_logo.png`;
+};
+
 export const getBrandPrimaryColor = (): string => (
   process.env.REACT_APP_BRAND_COLOR || '#0a3d33'
 );

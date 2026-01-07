@@ -50,6 +50,8 @@ export async function requestConsentIfNeeded(userEmail?: string | null, batchId?
   const title = 'Employee Attestation - Legal Acknowledgement';
   // Try to load current legal document metadata from server
   let previewUrl: string | null = null;
+  let allowPreview = false;
+  let allowDeny = false;
   try {
     const base = getApiBase() || '';
     if (base) {
@@ -57,6 +59,8 @@ export async function requestConsentIfNeeded(userEmail?: string | null, batchId?
       const j = await res.json().catch(() => null);
       const url = j?.url ? (base + j.url) : null;
       if (url) previewUrl = url;
+      allowPreview = !!j?.allowPreview;
+      allowDeny = !!j?.allowDeny;
     }
   } catch { /* non-blocking */ }
   const html = `
@@ -75,13 +79,13 @@ export async function requestConsentIfNeeded(userEmail?: string | null, batchId?
   `;
   // Helper to show dialog with or without preview option
   const ask = async (): Promise<'agree' | 'deny' | 'preview'> => {
-    if (previewUrl) {
-      const r = await tripleDialog(title, html, 'I Agree', 'Deny', 'Preview PDF', { icon: 'info' });
+    if (previewUrl && allowPreview) {
+      const r = await tripleDialog(title, html, 'I Agree', allowDeny ? 'Deny' : 'Dismiss', 'Preview PDF', { icon: 'info', showCancelButton: allowDeny });
       if (r === 'confirm') return 'agree';
       if (r === 'deny') return 'preview';
       return 'deny';
     }
-    const ok = await confirmDialog(title, html, 'I Agree', 'Deny', { icon: 'info' });
+    const ok = await confirmDialog(title, html, 'I Agree', 'Deny', { icon: 'info', showCancelButton: allowDeny });
     return ok ? 'agree' : 'deny';
   };
 
