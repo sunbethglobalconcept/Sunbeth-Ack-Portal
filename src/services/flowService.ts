@@ -1,5 +1,5 @@
 import { warn } from '../diagnostics/logger';
-import { getApiBase, getCompletionCcEmails, getCompletionBccEmails, getAdminEmails, getHrEmails } from '../utils/runtimeConfig';
+import { getApiBase, getCompletionCcEmails, getCompletionBccEmails, getAdminEmails, getHrEmails, isAcknowledgedAttachmentsEnabled } from '../utils/runtimeConfig';
 import { buildUserCompletionEmail, sendEmail, sendEmailWithAttachmentChunks, fetchAsBase64, generateCertificatePdf, generateAdminCompletionPdf, generateUserCompletionPdf } from './notificationService';
 import { buildUserCompletionCertificate } from './emailTemplates';
 import { getGraphToken } from './authTokens';
@@ -253,7 +253,10 @@ async function sendCertificateToUser(args: { base: string; batchId: string; ctx:
     } catch { /* non-blocking */ }
   }
 
-  const attachments = await buildAttachments(base, docs).catch(() => []) as Array<{ name: string; contentBytes: string; contentType?: string }>;
+  const includeDocAttachments = isAcknowledgedAttachmentsEnabled();
+  const attachments = includeDocAttachments
+    ? await buildAttachments(base, docs).catch(() => []) as Array<{ name: string; contentBytes: string; contentType?: string }>
+    : [];
   // Attach PDF version of the completion email (required by default)
   try {
     const emailPdf = await generateUserCompletionPdf({

@@ -71,7 +71,7 @@ export async function requestConsentIfNeeded(userEmail?: string | null, batchId?
         <li>I am signing/acknowledging this document voluntarily and without coercion;</li>
         <li>The information I have provided (if any) is true and accurate to the best of my knowledge;</li>
         <li>My electronic acknowledgement/signature has the same legal effect as a handwritten signature, to the fullest extent permitted by applicable law; and</li>
-        <li>I consent to the electronic delivery, execution, and storage of this document by [App/Company Name].</li>
+        <li>I consent to the electronic delivery, execution, and storage of this document by Sunbeth.</li>
       </ul>
       ${previewUrl ? '<p style="margin:8px 0">You can preview the official PDF inside the app before agreeing.</p>' : ''}
       <p>I understand that this acknowledgement is binding and enforceable.</p>

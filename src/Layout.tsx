@@ -10,6 +10,7 @@ import { useTenant } from './context/TenantContext';
 import { info } from './diagnostics/logger';
 import { getBatches, getUserProgress } from './services/dbService';
 import DancingLogoOverlay from './components/DancingLogoOverlay';
+import { getBrandLogoUrl } from './utils/runtimeConfig';
 import { enforceDuePolicies } from './utils/policiesDue';
 import AppWelcomeTour from './components/tours/AppWelcomeTour';
 
@@ -170,7 +171,20 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
       <DancingLogoOverlay />
   <header className={stickyHeader ? 'sticky' : ''}>
         <div className="brand">
-          <img src="https://sunbethconcepts.sharepoint.com/:i:/r/sites/CommunicationsandCorporateAffairs/Shared%20Documents/Comms%20Intranet/Logos%20of%20Sunbeth/SGCL%20Coloured%20LOGO.png?csf=1&web=1&e=2IQ9AL" alt="Sunbeth" onError={(e)=>{(e.target as HTMLImageElement).style.opacity = '0.18'; (e.target as HTMLImageElement).alt='Logo'}} />
+          {/* Use configured brand logo; fall back gracefully if it fails to load */}
+          {(() => {
+            const src = getBrandLogoUrl();
+            const isAbs = src && /^(https?:)?\//i.test(src as string);
+            const url = src && src.startsWith('/') ? `${window.location.origin}${src}` : (src || '/brand/sunbeth-logo.png');
+            return (
+              <img
+                src={url}
+                alt="Sunbeth"
+                style={{ maxHeight: 40, width: 'auto', objectFit: 'contain' }}
+                onError={(e)=>{ (e.target as HTMLImageElement).style.opacity = '0.18'; (e.target as HTMLImageElement).alt='Logo'; }}
+              />
+            );
+          })()}
           <div>
             <div className="h1" style={{ color: '#fff' }}>Sunbeth Document Acknowledgement</div>
             <div className="small" style={{ color: '#fff', opacity: .9 }}>Employee Acknowledgment Portal</div>
@@ -255,7 +269,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
                 <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #f4f4f4' }} />
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  { (rbac.canSeeAdmin || (rbac.perms && rbac.perms['viewAdmin'])) && (
+                  { (rbac.canEditAdmin) && (
                     <Link to="/admin"><button className="btn full sm">Admin View</button></Link>
                   ) }
                 </div>

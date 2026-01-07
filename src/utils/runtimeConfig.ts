@@ -65,6 +65,20 @@ export const setCertificateAttachmentEnabled = (value: boolean): void => {
   try { localStorage.setItem(CERT_ATTACH_KEY, value ? 'true' : 'false'); } catch { /* ignore */ }
 };
 
+// Feature: Attach acknowledged documents to user completion emails (local override beats env)
+const ACK_DOC_ATTACH_KEY = 'sunbeth:ackdocs:attachments';
+export const isAcknowledgedAttachmentsEnabled = (): boolean => {
+  const local = readLocalBool(ACK_DOC_ATTACH_KEY);
+  if (local !== null) return local;
+  const env = (process.env.REACT_APP_ACK_DOCUMENT_ATTACHMENTS_ENABLED || '').toLowerCase();
+  // Default OFF unless explicitly enabled via env or local override
+  return env === 'true';
+};
+
+export const setAcknowledgedAttachmentsEnabled = (value: boolean): void => {
+  try { localStorage.setItem(ACK_DOC_ATTACH_KEY, value ? 'true' : 'false'); } catch { /* ignore */ }
+};
+
 // HR notification recipients (comma-separated emails)
 export const getHrEmails = (): string[] => {
   const raw = (process.env.REACT_APP_HR_EMAILS || '').trim();

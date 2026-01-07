@@ -18,6 +18,7 @@ const DancingLogoOverlay: React.FC = () => {
   const showDelayMs = getBusyOverlayShowDelayMs();      // configurable: avoid flash for very fast ops
   const minVisibleMs = getBusyOverlayMinVisibleMs();    // configurable: keep visible briefly so users notice it
   const logo = getBrandLogoUrl();
+  const [logoFailed, setLogoFailed] = useState(false);
   const brand = getBrandName();
   const primary = getBrandPrimaryColor();
 
@@ -94,8 +95,13 @@ const DancingLogoOverlay: React.FC = () => {
       `}</style>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
   <div style={{ width: 120, height: 120, borderRadius: 20, background: '#fff', display: 'grid', placeItems: 'center', animation: 'sunbeth-pulse 1.8s ease-out infinite', border: `6px solid ${primary}` }}>
-          {logo ? (
-            <img src={logo} alt={brand} style={{ maxWidth: '80%', maxHeight: '80%', animation: 'sunbeth-dance 1.6s ease-in-out infinite' }} />
+          {logo && !logoFailed ? (
+            <img
+              src={logo.startsWith('/') ? `${window.location.origin}${logo}` : logo}
+              alt={brand}
+              onError={() => setLogoFailed(true)}
+              style={{ maxWidth: '80%', maxHeight: '80%', objectFit: 'contain', animation: 'sunbeth-dance 1.6s ease-in-out infinite' }}
+            />
           ) : (
             <div style={{ fontWeight: 800, color: primary, fontSize: 18, animation: 'sunbeth-dance 1.6s ease-in-out infinite' }}>{brand}</div>
           )}

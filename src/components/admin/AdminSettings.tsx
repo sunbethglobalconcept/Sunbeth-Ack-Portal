@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 // import { useAuth as useAuthCtx } from '../../context/AuthContext';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 import { useRBAC } from '../../context/RBACContext';
-import { isPoliciesEnabled, isCertificateAttachmentEnabled, setCertificateAttachmentEnabled } from '../../utils/runtimeConfig';
+import { isPoliciesEnabled, isCertificateAttachmentEnabled, setCertificateAttachmentEnabled, isAcknowledgedAttachmentsEnabled, setAcknowledgedAttachmentsEnabled } from '../../utils/runtimeConfig';
 import Alerts, { alertError, alertWarning, showToast } from '../../utils/alerts';
 import { getPrefs as getTourPrefs, setGlobalEnabled as setToursGlobalEnabled, setTourEnabled as setTourEnabledPref, TourId } from '../tours/TourPrefs';
 import { getApiBase } from '../../utils/runtimeConfig';
@@ -36,6 +36,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   const [reminderBusy, setReminderBusy] = useState<boolean>(false);
   const [reminderPreview, setReminderPreview] = useState<{ actionable: number; skippedRecent: number; error?: string; enabled?: boolean } | null>(null);
   const [certAttachEnabled, setCertAttachEnabled] = useState<boolean>(() => isCertificateAttachmentEnabled());
+  const [ackDocsAttachEnabled, setAckDocsAttachEnabled] = useState<boolean>(() => isAcknowledgedAttachmentsEnabled());
 
   useEffect(() => {
     try {
@@ -273,6 +274,31 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
                 disabled={!canEdit}
               />
               <span>{certAttachEnabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+          </div>
+        </div>
+      )}
+      {/* Acknowledged Documents attachments toggle (local override) */}
+      {isSuperAdmin && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>Attach Acknowledged Documents</div>
+              <div className="small muted">When off, user completion emails will not include the original acknowledged documents as attachments.</div>
+            </div>
+            <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={ackDocsAttachEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setAckDocsAttachEnabled(val);
+                  setAcknowledgedAttachmentsEnabled(val);
+                  showToast(`Acknowledged document attachments ${val ? 'enabled' : 'disabled'}`);
+                }}
+                disabled={!canEdit}
+              />
+              <span>{ackDocsAttachEnabled ? 'Enabled' : 'Disabled'}</span>
             </label>
           </div>
         </div>

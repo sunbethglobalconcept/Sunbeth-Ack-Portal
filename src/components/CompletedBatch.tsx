@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useExternalAuth } from '../context/ExternalAuthContext';
 import { getDocumentsByBatch, getAcknowledgedDocIds, getBatches } from '../services/dbService';
-import { generateCertificatePdf, generateCertificatePng } from '../services/notificationService';
+import { generateUserCompletionPdf } from '../services/notificationService';
 import { getApiBase } from '../utils/runtimeConfig';
 import type { Doc } from '../types/models';
 
@@ -63,7 +63,7 @@ const CompletedBatch: React.FC = () => {
     return list.filter(d => ids.includes(d.toba_documentid));
   }, [docs, ackIds]);
 
-  const handleDownloadCertificate = async (format: 'pdf' | 'png' = 'pdf') => {
+  const handleDownloadCompletedPdf = async () => {
     if (!id) return;
     setError(null);
     setDownloading(true);
@@ -72,6 +72,8 @@ const CompletedBatch: React.FC = () => {
       const userName = (account?.name || externalUser?.name || email || '').toString();
       const titles = ackedDocs.map(d => d.toba_title).filter(Boolean);
       const dept = recipientRow?.department || undefined;
+      const jobTitle = recipientRow?.jobTitle || undefined;
+      const location = recipientRow?.location || undefined;
       const bizName = recipientRow?.businessName || undefined;
       const payload = {
         batchName: batchName || `Batch ${id}`,
@@ -80,28 +82,28 @@ const CompletedBatch: React.FC = () => {
         completedOn: new Date().toISOString(),
         documents: titles,
         department: dept,
+        jobTitle,
+        location,
         businessName: bizName,
-        verifyUrl: `${window.location.origin}/batch/${encodeURIComponent(String(id))}/completed`,
-        pageSize: 'a4' as const,
       };
-      const file = format === 'pdf' ? await generateCertificatePdf(payload) : await generateCertificatePng(payload);
+      const file = await generateUserCompletionPdf(payload);
       // Convert base64 to Blob and trigger download
       const byteCharacters = atob(file.contentBytes);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
       const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: file.contentType || (format === 'pdf' ? 'application/pdf' : 'image/png') });
+      const blob = new Blob([byteArray], { type: file.contentType || 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       const safeBatch = (batchName || `Batch ${id}`).replace(/[^a-z0-9-_]+/gi, '-');
-      a.download = file.name || `certificate-${safeBatch}.${format}`;
+      a.download = file.name || `acknowledgement-${safeBatch}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      setError(`Failed to download certificate: ${e?.message || e}`);
+      setError(`Failed to download acknowledgement PDF: ${e?.message || e}`);
     } finally {
       setDownloading(false);
     }
@@ -116,11 +118,8 @@ const CompletedBatch: React.FC = () => {
             <div className="muted small">You can still view previously acknowledged documents.</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn sm" onClick={() => handleDownloadCertificate('pdf')} disabled={downloading || ackedDocs.length === 0}>
+            <button className="btn sm" onClick={() => handleDownloadCompletedPdf()} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PDF'}
-            </button>
-            <button className="btn ghost sm" onClick={() => handleDownloadCertificate('png')} disabled={downloading || ackedDocs.length === 0}>
-              {downloading ? 'Preparing…' : 'Download PNG'}
             </button>
             <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
           </div>

@@ -22,7 +22,8 @@ export function buildUserCompletionCertificate(opts: {
   // Cert mode is driven by presence of cert identity (verifyUrl or certificateId)
   const certMode = !!(opts.verifyUrl || opts.certificateId);
   const brand = getBrandName();
-  const logo = getBrandLogoUrl();
+  const rawLogo = getBrandLogoUrl();
+  const logo = rawLogo && rawLogo.startsWith('/') ? `${opts.appUrl}${rawLogo}` : rawLogo;
   const primary = getBrandPrimaryColor();
   const subject = certMode
     ? `Completion Certificate: ${opts.batchName}`
@@ -39,7 +40,8 @@ export function buildUserCompletionCertificate(opts: {
     location: opts.location,
     primaryGroup: opts.primaryGroup
   }, completedText, docCount);
-  const verifyHtml = certMode ? renderVerifySection(opts.verifyUrl, primary) : '';
+  // Hide verify section unless attachments are included (keeps UI clean when cert PDF is omitted)
+  const verifyHtml = opts.includeAttachment ? renderVerifySection(opts.verifyUrl, primary) : '';
   const certIdHtml = certMode && opts.certificateId ? `<div style="margin:8px 0 12px 0;color:#555;font-size:12px"><strong>Certificate ID:</strong> ${opts.certificateId}</div>` : '';
   const attachmentNote = opts.includeAttachment
     ? `<p style="margin:12px 0 0 0;color:#666;font-size:12px">Your completion certificate PDF is attached. You can always access the documents again from the portal.</p>`

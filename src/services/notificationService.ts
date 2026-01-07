@@ -39,21 +39,59 @@ export const sendEmail = async (
   if (!recipients || recipients.length === 0) return;
   const token = await getGraphToken(['Mail.Send']);
 
+  // Inline-embed brand logo so it renders reliably in email clients
+  let bodyWithInline = htmlBody;
+  let inlineLogoAttachment: { [k: string]: any } | null = null;
+  try {
+    const rawLogo = getBrandLogoUrl();
+    const logoUrl = rawLogo ? (rawLogo.startsWith('/') ? `${window.location.origin}${rawLogo}` : rawLogo) : '';
+    if (logoUrl && bodyWithInline.includes(logoUrl)) {
+      // Fetch logo and convert to base64
+      const resp = await fetch(logoUrl, { cache: 'no-store' });
+      if (resp.ok) {
+        const ct = resp.headers.get('content-type') || undefined;
+        const buf = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const b64 = btoa(binary);
+        const cid = 'brand-logo';
+        bodyWithInline = bodyWithInline.split(logoUrl).join(`cid:${cid}`);
+        inlineLogoAttachment = {
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: 'brand-logo',
+          contentId: cid,
+          isInline: true,
+          contentType: ct || 'image/png',
+          contentBytes: b64
+        };
+      }
+    }
+  } catch { /* best-effort; fall back to external URL */ }
+
   const recipientChunks = chunk(recipients, 90); // keep well under practical limits
   for (const part of recipientChunks) {
+    // Build Graph attachments payload once to avoid duplication and parsing errors
+    const attachmentPayloads = [
+      ...(inlineLogoAttachment ? [inlineLogoAttachment] : []),
+      ...((attachments && attachments.length > 0)
+        ? attachments.map(a => ({
+            '@odata.type': '#microsoft.graph.fileAttachment',
+            name: a.name,
+            contentType: a.contentType || 'application/octet-stream',
+            contentBytes: a.contentBytes
+          }))
+        : [])
+    ];
+
     const message = {
       message: {
         subject,
-        body: { contentType: 'HTML', content: htmlBody },
+        body: { contentType: 'HTML', content: bodyWithInline },
         toRecipients: part.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })),
         ccRecipients: (options?.cc && options.cc.length > 0) ? options.cc.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })) : undefined,
         bccRecipients: (options?.bcc && options.bcc.length > 0) ? options.bcc.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })) : undefined,
-        attachments: (attachments && attachments.length > 0) ? attachments.map(a => ({
-          '@odata.type': '#microsoft.graph.fileAttachment',
-          name: a.name,
-          contentType: a.contentType || 'application/octet-stream',
-          contentBytes: a.contentBytes
-        })) : undefined
+        attachments: attachmentPayloads.length > 0 ? attachmentPayloads : undefined
       },
       saveToSentItems: true
     };
@@ -181,7 +219,8 @@ export const buildBatchEmail = (opts: {
   senderDisplayName?: string;
 }): { subject: string; bodyHtml: string } => {
   const brand = getBrandName();
-  const logo = getBrandLogoUrl();
+  const rawLogo = getBrandLogoUrl();
+  const logo = rawLogo && rawLogo.startsWith('/') ? `${window.location.origin}${rawLogo}` : rawLogo;
   const primary = getBrandPrimaryColor();
   const subject = `Action required: ${opts.batchName}`;
   const bodyHtml = `
@@ -232,7 +271,8 @@ export const buildBatchCompletionEmail = (opts: {
   totalDocuments?: number;
 }): { subject: string; bodyHtml: string } => {
   const brand = getBrandName();
-  const logo = getBrandLogoUrl();
+  const rawLogo = getBrandLogoUrl();
+  const logo = rawLogo && rawLogo.startsWith('/') ? `${window.location.origin}${rawLogo}` : rawLogo;
   const primary = getBrandPrimaryColor();
   const subject = `Completed: ${opts.batchName}`;
   const bodyHtml = `
@@ -432,7 +472,7 @@ export const generateAdminCompletionPdf = async (payload: {
   const base = getApiBase() as string;
   const rawLogo = getCertificateLogoUrl();
   const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
-  const { subject, bodyHtml } = buildUserCompletionEmail({
+  const { bodyHtml } = buildUserCompletionEmail({
     appUrl: window.location.origin,
     batchName: payload.batchName,
     userEmail: payload.userEmail,
@@ -483,7 +523,8 @@ export const buildUserCompletionEmail = (opts: {
   primaryGroup?: string;
 }): { subject: string; bodyHtml: string } => {
   const brand = getBrandName();
-  const logo = getBrandLogoUrl();
+  const rawLogo = getBrandLogoUrl();
+  const logo = rawLogo && rawLogo.startsWith('/') ? `${window.location.origin}${rawLogo}` : rawLogo;
   const primary = getBrandPrimaryColor();
   const subject = `Batch Completion Notification: ${opts.batchName}`;
   const docs = (opts.documents || []).map(d => String(d || 'Document'));

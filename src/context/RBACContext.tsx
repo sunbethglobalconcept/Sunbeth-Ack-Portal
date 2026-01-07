@@ -12,10 +12,10 @@ import { getRoles } from '../services/dbService';
 import { getPermissionCatalog, getEffectivePermissions } from '../services/rbacService';
 import { getApiBase } from '../utils/runtimeConfig';
 
-type RBAC = { 
-  role: 'SuperAdmin'|'Admin'|'Manager'|'Employee', 
-  canSeeAdmin: boolean, 
-  canEditAdmin: boolean, 
+type RBAC = {
+  role: 'SuperAdmin'|'Admin'|'Manager'|'Employee',
+  canSeeAdmin: boolean,
+  canEditAdmin: boolean,
   isSuperAdmin: boolean,
   perms: Record<string, boolean>
 };
@@ -54,16 +54,16 @@ let DB_MANAGERS: string[] = [];
 // Helper function to determine role from email and groups
 const determineRole = (userEmail: string, groups: string[]): RBAC['role'] => {
   const normalizedEmail = userEmail.toLowerCase();
-  
+
   // DB roles take precedence if present, else fall back to environment lists
   if (DB_SUPER_ADMINS.includes(normalizedEmail) || SUPER_ADMINS.includes(normalizedEmail)) return 'SuperAdmin';
   if (DB_ADMINS.includes(normalizedEmail) || ADMINS.includes(normalizedEmail)) return 'Admin';
   if (DB_MANAGERS.includes(normalizedEmail) || MANAGERS.includes(normalizedEmail)) return 'Manager';
-  
+
   // Check group-based roles
   if (groups.some(g => config.Admin.groups.includes(g))) return 'Admin';
   if (groups.some(g => config.Manager.groups.includes(g))) return 'Manager';
-  
+
   return 'Employee';
 };
 
