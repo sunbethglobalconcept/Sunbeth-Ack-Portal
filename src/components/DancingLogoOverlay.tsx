@@ -27,7 +27,7 @@ const DancingLogoOverlay: React.FC = () => {
       try {
         const detail = (e as CustomEvent).detail || {};
         setLabel(String(detail.label || ''));
-      } catch {}
+      } catch { void 0; }
       setCount(c => {
         const next = c + 1;
         if (next === 1) {
