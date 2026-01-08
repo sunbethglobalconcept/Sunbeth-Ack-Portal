@@ -157,12 +157,3 @@ export const getBusyOverlayMinVisibleMs = (): number => {
   if (Number.isFinite(ms) && ms >= 0) return Math.round(ms);
   return 600; // default
 };
-
-// Optional cooldown to prevent overlay from re-appearing too quickly after it hides
-export const getBusyOverlayCooldownMs = (): number => {
-  const secs = Number(process.env.REACT_APP_BUSY_COOLDOWN_SECS);
-  if (Number.isFinite(secs) && secs >= 0) return Math.round(secs * 1000);
-  const ms = Number(process.env.REACT_APP_BUSY_COOLDOWN_MS);
-  if (Number.isFinite(ms) && ms >= 0) return Math.round(ms);
-  return 4000; // default
-};

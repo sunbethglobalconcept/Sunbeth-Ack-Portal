@@ -44,19 +44,22 @@ export const installBusyNetworkTracking = () => {
         const u = url.toLowerCase();
         const m = method.toUpperCase();
         if (isStaticAsset(u)) return '';
-        // Silence most GET requests to avoid frequent overlay flashes.
-        // Only show for clearly long-running or mutating operations.
-        if (u.includes('/api/proxy/graph')) return ''; // SharePoint graph GETs can be frequent
-        if (u.includes('/api/proxy')) return ''; // document fetches: rely on inline skeletons
+        if (u.includes('/api/proxy/graph')) return 'Fetching from SharePoint...';
+        if (u.includes('/api/proxy')) return 'Fetching document...';
+        if (/\/api\/batches\/[^/]+\/documents/i.test(u) && m === 'GET') return 'Loading documents...';
         if (/\/api\/batches\/[^/]+\/documents/i.test(u) && m === 'POST') return 'Saving documents...';
         if (/\/api\/batches\/[^/]+\/recipients/i.test(u) && m === 'POST') return 'Saving recipients...';
+        if (/\/api\/batches\/[^/]+\/completions/i.test(u)) return 'Loading completion summary...';
+        if (/\/api\/batches\/?(\?|$)/i.test(u) && m === 'GET') return 'Loading batches...';
         if (/\/api\/batches\/full/i.test(u) && m === 'POST') return 'Creating your batch...';
-        if (/\/api\/batches\/[^/]+(\?|$)/i.test(u) && (m === 'PUT' || m === 'PATCH')) return 'Updating batch...';
+        if (/\/api\/batches\/[^/]+(\?|$)/i.test(u) && m === 'PUT') return 'Updating batch...';
+        if (/\/api\/recipients/i.test(u) && m === 'GET') return 'Loading recipients...';
+        if (/\/api\/documents/i.test(u) && m === 'GET') return 'Loading documents...';
         if (/\/api\//i.test(u)) {
+          if (m === 'GET') return 'Loading...';
           if (m === 'POST') return 'Saving...';
           if (m === 'PUT' || m === 'PATCH') return 'Updating...';
           if (m === 'DELETE') return 'Deleting...';
-          // GET: no overlay label by default
         }
         return '';
       } catch { return ''; }
