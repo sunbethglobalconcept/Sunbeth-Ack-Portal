@@ -18,7 +18,10 @@ const DancingLogoOverlay: React.FC = () => {
   const lastHiddenAtRef = useRef<number | null>(null);
   const showDelayMs = getBusyOverlayShowDelayMs();      // configurable: avoid flash for very fast ops
   const minVisibleMs = getBusyOverlayMinVisibleMs();    // configurable: keep visible briefly so users notice it
-  const cooldownMs = getBusyOverlayCooldownMs();        // configurable: prevent frequent reappearance
+  let cooldownMs = 4000;                                 // configurable: prevent frequent reappearance
+  try {
+    cooldownMs = typeof (getBusyOverlayCooldownMs as any) === 'function' ? (getBusyOverlayCooldownMs as any)() : 4000;
+  } catch { cooldownMs = 4000; }
   const logo = getBrandLogoUrl();
   const [logoFailed, setLogoFailed] = useState(false);
   const brand = getBrandName();
