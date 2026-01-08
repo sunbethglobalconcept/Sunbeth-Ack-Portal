@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getBusyOverlayShowDelayMs, getBusyOverlayMinVisibleMs, getBusyOverlayCooldownMs } from '../utils/runtimeConfig';
+import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getBusyOverlayShowDelayMs, getBusyOverlayMinVisibleMs } from '../utils/runtimeConfig';
 
 /**
  * Full-screen overlay with a "dancing" brand logo used to entertain users during long operations.
@@ -15,13 +15,8 @@ const DancingLogoOverlay: React.FC = () => {
   const startedAtRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
-  const lastHiddenAtRef = useRef<number | null>(null);
   const showDelayMs = getBusyOverlayShowDelayMs();      // configurable: avoid flash for very fast ops
   const minVisibleMs = getBusyOverlayMinVisibleMs();    // configurable: keep visible briefly so users notice it
-  let cooldownMs = 4000;                                 // configurable: prevent frequent reappearance
-  try {
-    cooldownMs = typeof (getBusyOverlayCooldownMs as any) === 'function' ? (getBusyOverlayCooldownMs as any)() : 4000;
-  } catch { cooldownMs = 4000; }
   const logo = getBrandLogoUrl();
   const [logoFailed, setLogoFailed] = useState(false);
   const brand = getBrandName();
@@ -32,7 +27,7 @@ const DancingLogoOverlay: React.FC = () => {
       try {
         const detail = (e as CustomEvent).detail || {};
         setLabel(String(detail.label || ''));
-      } catch { void 0; }
+      } catch (err) { void err; }
       setCount(c => {
         const next = c + 1;
         if (next === 1) {
@@ -40,12 +35,9 @@ const DancingLogoOverlay: React.FC = () => {
           startedAtRef.current = Date.now();
           // clear any pending hide
           if (hideTimerRef.current) { window.clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
-          const sinceHide = lastHiddenAtRef.current ? (Date.now() - lastHiddenAtRef.current) : Infinity;
-          const cooldownRemaining = Number.isFinite(sinceHide) ? Math.max(0, cooldownMs - sinceHide) : 0;
-          const effectiveDelay = Math.max(showDelayMs, cooldownRemaining);
           const t = window.setTimeout(() => {
             setVisible(true);
-          }, effectiveDelay);
+          }, showDelayMs);
           showTimerRef.current = t as any;
         }
         return next;
@@ -60,9 +52,9 @@ const DancingLogoOverlay: React.FC = () => {
         const wait = Math.max(0, minVisibleMs - elapsed);
         // clear any pending show
         if (showTimerRef.current) { window.clearTimeout(showTimerRef.current); showTimerRef.current = null; }
-        if (wait === 0) { setVisible(false); lastHiddenAtRef.current = Date.now(); }
+        if (wait === 0) setVisible(false);
         else {
-          const t = window.setTimeout(() => { setVisible(false); lastHiddenAtRef.current = Date.now(); }, wait);
+          const t = window.setTimeout(() => setVisible(false), wait);
           hideTimerRef.current = t as any;
         }
       }
@@ -80,12 +72,12 @@ const DancingLogoOverlay: React.FC = () => {
       if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
       if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     };
-  }, [showDelayMs, minVisibleMs, cooldownMs]);
+  }, []);
 
   if (!visible) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       <style>{`
         @keyframes sunbeth-dance {
           0% { transform: translateY(0) rotate(0deg) scale(1); }
@@ -114,7 +106,22 @@ const DancingLogoOverlay: React.FC = () => {
             <div style={{ fontWeight: 800, color: primary, fontSize: 18, animation: 'sunbeth-dance 1.6s ease-in-out infinite' }}>{brand}</div>
           )}
         </div>
-        <div style={{ color: '#fff', fontWeight: 600 }}>{label || 'Please wait...'}</div>
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            marginTop: 12,
+            background: '#ffffff',
+            color: '#111',
+            fontWeight: 600,
+            padding: '8px 12px',
+            borderRadius: 12,
+            border: '1px solid #e9ecef',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
+          }}
+        >
+          {label || 'Working...'}
+        </div>
       </div>
     </div>
   );
