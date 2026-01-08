@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getBusyOverlayShowDelayMs, getBusyOverlayMinVisibleMs } from '../utils/runtimeConfig';
+import { getBrandLogoUrl, getBrandName, getBrandPrimaryColor, getBusyOverlayShowDelayMs, getBusyOverlayMinVisibleMs, getBusyOverlayCooldownMs } from '../utils/runtimeConfig';
 
 /**
  * Full-screen overlay with a "dancing" brand logo used to entertain users during long operations.
@@ -15,8 +15,10 @@ const DancingLogoOverlay: React.FC = () => {
   const startedAtRef = useRef<number | null>(null);
   const showTimerRef = useRef<number | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const lastHiddenAtRef = useRef<number | null>(null);
   const showDelayMs = getBusyOverlayShowDelayMs();      // configurable: avoid flash for very fast ops
   const minVisibleMs = getBusyOverlayMinVisibleMs();    // configurable: keep visible briefly so users notice it
+  const cooldownMs = getBusyOverlayCooldownMs();        // configurable: prevent frequent reappearance
   const logo = getBrandLogoUrl();
   const [logoFailed, setLogoFailed] = useState(false);
   const brand = getBrandName();
@@ -35,9 +37,12 @@ const DancingLogoOverlay: React.FC = () => {
           startedAtRef.current = Date.now();
           // clear any pending hide
           if (hideTimerRef.current) { window.clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+          const sinceHide = lastHiddenAtRef.current ? (Date.now() - lastHiddenAtRef.current) : Infinity;
+          const cooldownRemaining = Number.isFinite(sinceHide) ? Math.max(0, cooldownMs - sinceHide) : 0;
+          const effectiveDelay = Math.max(showDelayMs, cooldownRemaining);
           const t = window.setTimeout(() => {
             setVisible(true);
-          }, showDelayMs);
+          }, effectiveDelay);
           showTimerRef.current = t as any;
         }
         return next;
@@ -52,9 +57,9 @@ const DancingLogoOverlay: React.FC = () => {
         const wait = Math.max(0, minVisibleMs - elapsed);
         // clear any pending show
         if (showTimerRef.current) { window.clearTimeout(showTimerRef.current); showTimerRef.current = null; }
-        if (wait === 0) setVisible(false);
+        if (wait === 0) { setVisible(false); lastHiddenAtRef.current = Date.now(); }
         else {
-          const t = window.setTimeout(() => setVisible(false), wait);
+          const t = window.setTimeout(() => { setVisible(false); lastHiddenAtRef.current = Date.now(); }, wait);
           hideTimerRef.current = t as any;
         }
       }
@@ -72,7 +77,7 @@ const DancingLogoOverlay: React.FC = () => {
       if (showTimerRef.current) window.clearTimeout(showTimerRef.current);
       if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     };
-  }, []);
+  }, [showDelayMs, minVisibleMs, cooldownMs]);
 
   if (!visible) return null;
 
