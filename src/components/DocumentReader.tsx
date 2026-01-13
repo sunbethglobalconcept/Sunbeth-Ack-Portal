@@ -54,6 +54,7 @@ const DocumentReader: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [businesses, setBusinesses] = useState<Array<{ id: number | string; name: string }>>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | string | null>(null);
+  const [isLastPage, setIsLastPage] = useState<boolean>(false);
 
   // Load businesses list for selector
   React.useEffect(() => {
@@ -143,7 +144,14 @@ const DocumentReader: React.FC = () => {
             } catch (e) { /* noop */ }
           }}
         />
-        <ViewerFrame isPdf={isPdf} isDocx={isDocx} viewerUrls={viewerUrls} docUrl={docUrl} needGraphAuth={needGraphAuth} />
+        <ViewerFrame
+          isPdf={isPdf}
+          isDocx={isDocx}
+          viewerUrls={viewerUrls}
+          docUrl={docUrl}
+          needGraphAuth={needGraphAuth}
+          onLastPageChange={(isLast) => setIsLastPage(prev => prev || isLast)}
+        />
         <ActionLinks
           docUrl={docUrl || ''}
           openInNewTabUrl={openInNewTabUrl || ''}
@@ -161,6 +169,7 @@ const DocumentReader: React.FC = () => {
           businesses={businesses}
           selectedBusinessId={selectedBusinessId}
           onBusinessChange={(bid) => setSelectedBusinessId(bid)}
+          isLastPage={isLastPage}
         />
         <NavControls onPrev={prevDoc} onNext={nextDoc} progressText={progressText} />
         <Toast message={toastMsg} show={showToast} />

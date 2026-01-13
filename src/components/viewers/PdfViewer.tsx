@@ -9,9 +9,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/$
 interface PdfViewerProps {
   // Primary URL or a list of URLs to try in order (e.g., proxy then original)
   url: string | string[];
+  onLastPageChange?: (isLast: boolean) => void;
+  onPageChange?: (page: number, numPages: number) => void;
 }
 
-const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
+const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChange }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -116,6 +118,17 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
     return () => window.removeEventListener('resize', update);
   }, []);
 
+  // Notify parent about page state changes early to keep hook order stable across renders
+  useEffect(() => {
+    try {
+      if (typeof onPageChange === 'function') onPageChange(page, numPages);
+      if (typeof onLastPageChange === 'function') {
+        const isLast = numPages > 0 && page >= numPages;
+        onLastPageChange(isLast);
+      }
+    } catch { /* noop */ }
+  }, [page, numPages, onPageChange, onLastPageChange]);
+
   if (loading) {
     return (
       <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>
@@ -166,16 +179,17 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url }) => {
   const goPrev = () => canPrev && setPage(p => p - 1);
   const goNext = () => canNext && setPage(p => p + 1);
 
+
   // Width-based sizing for crisp rendering; zoom multiplies the available width
   const pageWidth = Math.floor(containerWidth * scale);
 
   return (
-    <div ref={containerRef} style={{ 
-      maxHeight: '70vh', 
+    <div ref={containerRef} style={{
+      maxHeight: '70vh',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
-      border: '1px solid #ddd', 
+      border: '1px solid #ddd',
       borderRadius: 6,
       background: '#f5f5f5'
     }}>

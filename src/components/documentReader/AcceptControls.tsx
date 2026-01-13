@@ -16,11 +16,40 @@ interface AcceptControlsProps {
   businesses?: BusinessOption[];
   selectedBusinessId?: number | string | null;
   onBusinessChange?: (businessId: number | string) => void;
+  isLastPage?: boolean; // New: whether user is on last page
 }
 
-const AckStatement: React.FC<{ userName?: string; ack: boolean; onAckChange: (checked: boolean) => void; }> = ({ userName, ack, onAckChange }) => (
+const AckStatement: React.FC<{
+  userName?: string;
+  ack: boolean;
+  onAckChange: (checked: boolean) => void;
+  isLastPage?: boolean;
+}> = ({ userName, ack, onAckChange, isLastPage }) => (
   <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-    <input type="checkbox" checked={ack} onChange={e => onAckChange(e.target.checked)} />
+    <input
+      type="checkbox"
+      checked={ack}
+      onChange={e => onAckChange(e.target.checked)}
+      disabled={!isLastPage}
+      title={!isLastPage ? 'You have not completed reading the document.' : undefined}
+      style={!isLastPage ? { cursor: 'not-allowed' } : {}}
+      onMouseOver={e => {
+        if (!isLastPage) {
+          (e.target as HTMLInputElement).setAttribute('data-tooltip', 'You have not completed reading the document.');
+        }
+      }}
+      onFocus={e => {
+        if (!isLastPage) {
+          (e.target as HTMLInputElement).setAttribute('data-tooltip', 'You have not completed reading the document.');
+        }
+      }}
+      onMouseOut={e => {
+        (e.target as HTMLInputElement).removeAttribute('data-tooltip');
+      }}
+      onBlur={e => {
+        (e.target as HTMLInputElement).removeAttribute('data-tooltip');
+      }}
+    />
     {userName ? (
       <>
         <span>I </span>
@@ -63,13 +92,14 @@ const AcceptControls: React.FC<AcceptControlsProps> = ({
   businesses = [],
   selectedBusinessId = null,
   onBusinessChange,
+  isLastPage = true,
 }) => {
   if (!ready || alreadyAcked) return null;
   const disabled = !ack || !selectedBusinessId;
   return (
     <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, flexWrap: 'wrap' }}>
-        <AckStatement userName={userName} ack={ack} onAckChange={onAckChange} />
+        <AckStatement userName={userName} ack={ack} onAckChange={onAckChange} isLastPage={isLastPage} />
         <BusinessSelector businesses={businesses} selectedBusinessId={selectedBusinessId} onBusinessChange={onBusinessChange} />
       </div>
       <button

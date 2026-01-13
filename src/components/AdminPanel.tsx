@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function, complexity, react-hooks/exhaustive-deps, react-hooks/rules-of-hooks, @typescript-eslint/no-empty-function, @typescript-eslint/no-non-null-assertion, no-empty, max-lines, max-depth, no-useless-escape, global-require */
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { NotificationEmailsTab } from './admin/NotificationEmailsTab';
 import { type SimpleDoc } from './admin/DocumentListEditor';
 import { UserGroupSelector } from './admin/UserGroupSelector';
@@ -54,6 +55,7 @@ import SharePointBrowser from './admin/SharePointBrowser';
 
 // Main Admin Panel Component
 const AdminPanel: React.FC = () => {
+  const navigate = useNavigate();
   const { role, canSeeAdmin, canEditAdmin, isSuperAdmin, perms } = useRBAC();
   const { account } = useAuthCtx();
   const { externalSupport } = useFeatureFlags();
@@ -905,6 +907,26 @@ const AdminPanel: React.FC = () => {
         <div className="admin-header">
           <PageHeader title="Admin Panel" subtitle={`Role: ${role} • ${canEditAdmin ? 'Full Access' : 'Read Only'}`} />
           <UserGuideTour userRole="admin" />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <button
+            className="btn ghost xs"
+            onClick={() => {
+              try {
+                if (window.history && window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate('/');
+                }
+              } catch {
+                navigate('/');
+              }
+            }}
+            title="Exit Admin Panel"
+            aria-label="Exit Admin Panel"
+          >
+            Exit Admin
+          </button>
         </div>
 
         {/* Tab Navigation */}
