@@ -71,19 +71,18 @@ Before running this project, ensure you have:
    cd Sunbeth-Ack-Portal
    ```
 
-2. **Install dependencies**
+2. **Install dependencies (frontend + backend)**
    ```bash
-   npm install
+   # Frontend
+   cd frontend
+   npm ci
+
+   # Backend (Sunbeth Doc Backend)
+   cd ../sunbeth_doc_backend
+   npm ci
    ```
 
-3. **Install server dependencies**
-   ```bash
-   cd server
-   npm install
-   cd ..
-   ```
-
-4. **Configure environment variables**
+3. **Configure environment variables**
    Create a `.env` file in the root directory:
    ```env
    # Azure AD Configuration
@@ -109,17 +108,24 @@ Before running this project, ensure you have:
    ```bash
    npm start
    ```
-   The application will open at `http://localhost:3000`
+   - The app opens at `http://localhost:3000`.
+   - On Windows, a prestart hook attempts to free port 3000 and auto-start the backend on port 4000.
 
-2. **Start the backend API server** (in a separate terminal)
+2. **Start the backend API server (manual options)**
+   - If you prefer manual control (or port 4000 is already in use), use one of:
    ```bash
-   npm run api
-   ```
-   The API will be available at `http://localhost:4000`
-   
-   Development requests to `/api/*` from the React app are proxied to `http://localhost:4000` by `src/setupProxy.js`.
+   # From repo root (PowerShell)
+   ./scripts/start-backend.ps1
 
-#### Multi-tenant theming in dev (no hosts file required)
+   # Or directly
+   cd sunbeth_doc_backend
+   node index.js
+   ```
+   The API will be available at `http://localhost:4000`.
+
+   Frontend requests use `REACT_APP_API_BASE` (recommended). A dev proxy may be present, but direct API base avoids proxy coupling.
+
+#### Multi-tenant theming in dev (optional dev proxy header)
 
 To test different tenant themes without editing your OS hosts file, you can set an environment variable that the dev proxy forwards to the backend as a header.
 
@@ -136,7 +142,7 @@ $env:REACT_APP_DEV_TENANT_DOMAIN='orga.local.test'  # or orgb.local.test, etc.
 npm start
 ```
 
-The proxy will send `X-Tenant-Domain: orga.local.test` with each `/api` request, allowing the backend to resolve the matching tenant and return the appropriate theme.
+If enabled, the proxy sends `X-Tenant-Domain: orga.local.test` with each `/api` request, allowing the backend to resolve the matching tenant and return the appropriate theme.
 
 ### Production Build
 
@@ -191,11 +197,11 @@ src/
 
 ## 🔧 Available Scripts
 
-- `npm start` - Start development server
+- `npm start` - Start development server (prestart may auto-start backend)
 - `npm run build` - Build for production
 - `npm test` - Run test suite
 - `npm run preview` - Preview production build
-- `npm run api` - Start backend API server
+- Backend start (recommended): `./scripts/start-backend.ps1` or `node ../sunbeth_doc_backend/index.js`
 - `npm run docs` - Generate TypeScript documentation
 - `npm run fix:sourcemaps` - Fix sourcemap issues
 

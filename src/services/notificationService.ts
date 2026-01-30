@@ -76,11 +76,11 @@ export const sendEmail = async (
       ...(inlineLogoAttachment ? [inlineLogoAttachment] : []),
       ...((attachments && attachments.length > 0)
         ? attachments.map(a => ({
-            '@odata.type': '#microsoft.graph.fileAttachment',
-            name: a.name,
-            contentType: a.contentType || 'application/octet-stream',
-            contentBytes: a.contentBytes
-          }))
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: a.name,
+          contentType: a.contentType || 'application/octet-stream',
+          contentBytes: a.contentBytes
+        }))
         : [])
     ];
 
@@ -337,7 +337,7 @@ export const generateCertificatePdf = async (payload: {
   certificateId?: string;
   pageSize?: 'a4' | 'quarter';
 }): Promise<{ name: string; contentBytes: string; contentType: string }> => {
-  const base = getApiBase() as string;
+  const base = (getApiBase() || '').replace(/\/$/, '');
   // Ensure certificate logo URL is absolute so backend can fetch it
   const rawLogo = getCertificateLogoUrl() || getBrandLogoUrl();
   const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
@@ -435,7 +435,8 @@ export const generateUserCompletionPdf = async (payload: {
     certificateId: payload.certificateId,
     includeAttachment: true,
   });
-  const res = await fetch(`${base}/api/emails/user-completion-pdf`, {
+  const userPdfUrl = base ? `${base}/api/emails/user-completion-pdf` : `/api/emails/user-completion-pdf`;
+  const res = await fetch(userPdfUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -449,7 +450,21 @@ export const generateUserCompletionPdf = async (payload: {
   if (!res.ok) throw new Error(`User completion PDF failed: ${res.status}`);
   const j = await res.json();
   return {
-    name: String(j?.name || `acknowledgement-${payload.userEmail || 'user'}.pdf`),
+    // name: String(j?.name || `acknowledgement-${payload.userEmail || 'user'}.pdf`),
+    name: (() => {
+      const email = (payload?.userEmail || 'user').toString();
+      let base = 'user';
+      const match = email.match(/^([a-z0-9._%-]+)@/i);
+      if (match && match[1]) {
+        // Try to extract firstname.lastname from email
+        base = match[1].replace(/[^a-z0-9._-]/gi, '').replace(/\.+/g, '.');
+      }
+      // Format: firstname.lastname-document-ack-jan-2026
+      const now = new Date();
+      const month = now.toLocaleString('en-US', { month: 'short' }).toLowerCase();
+      const year = now.getFullYear();
+      return `${base}-document-ack-${month}-${year}.pdf`;
+    })(),
     contentBytes: String(j?.contentBytes || ''),
     contentType: String(j?.contentType || 'application/pdf')
   };
@@ -469,7 +484,7 @@ export const generateAdminCompletionPdf = async (payload: {
   businessName?: string;
   primaryGroup?: string;
 }): Promise<{ name: string; contentBytes: string; contentType: string }> => {
-  const base = getApiBase() as string;
+  const base = (getApiBase() || '').replace(/\/$/, '');
   const rawLogo = getCertificateLogoUrl();
   const absLogo = (rawLogo && rawLogo.startsWith('/')) ? `${window.location.origin}${rawLogo}` : rawLogo;
   const { bodyHtml } = buildUserCompletionEmail({
@@ -486,7 +501,8 @@ export const generateAdminCompletionPdf = async (payload: {
     businessName: payload.businessName,
     primaryGroup: payload.primaryGroup,
   });
-  const res = await fetch(`${base}/api/emails/admin-completion-pdf`, {
+  const adminPdfUrl = base ? `${base}/api/emails/admin-completion-pdf` : `/api/emails/admin-completion-pdf`;
+  const res = await fetch(adminPdfUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -500,7 +516,20 @@ export const generateAdminCompletionPdf = async (payload: {
   if (!res.ok) throw new Error(`Admin completion PDF failed: ${res.status}`);
   const j = await res.json();
   return {
-    name: String(j?.name || `acknowledgement-${payload.userEmail || 'user'}.pdf`),
+    name: (() => {
+      const email = (payload?.userEmail || 'user').toString();
+      let base = 'user';
+      const match = email.match(/^([a-z0-9._%-]+)@/i);
+      if (match && match[1]) {
+        // Try to extract firstname.lastname from email
+        base = match[1].replace(/[^a-z0-9._-]/gi, '').replace(/\.+/g, '.');
+      }
+      // Format: firstname.lastname-document-ack-jan-2026
+      const now = new Date();
+      const month = now.toLocaleString('en-US', { month: 'short' }).toLowerCase();
+      const year = now.getFullYear();
+      return `${base}-document-ack-${month}-${year}.pdf`;
+    })(),
     contentBytes: String(j?.contentBytes || ''),
     contentType: String(j?.contentType || 'application/pdf')
   };

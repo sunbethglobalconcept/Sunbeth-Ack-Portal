@@ -1,5 +1,6 @@
 import { warn } from '../diagnostics/logger';
 import { getApiBase, getCompletionCcEmails, getCompletionBccEmails, getAdminEmails, getHrEmails, isAcknowledgedAttachmentsEnabled } from '../utils/runtimeConfig';
+import { apiGet, apiPost } from './api';
 import { buildUserCompletionEmail, sendEmail, sendEmailWithAttachmentChunks, fetchAsBase64, generateCertificatePdf, generateAdminCompletionPdf, generateUserCompletionPdf } from './notificationService';
 import { buildUserCompletionCertificate } from './emailTemplates';
 import { getGraphToken } from './authTokens';
@@ -15,12 +16,12 @@ export const sendAcknowledgement = async (payload: any): Promise<void> => {
 
 /* eslint-disable-next-line complexity */
 async function processAcknowledgement(payload: any): Promise<void> {
-  const api = getApiBase() as string;
-  const base = api;
+  const apiBase = (getApiBase() || '').replace(/\/$/, '');
+  const base = apiBase; // empty string means use relative URLs via api helpers
   const batchId = String(payload.batchId);
   const email = String((payload.userPrincipalName || payload.userEmail || payload.user || payload.email || '')).toLowerCase();
 
-  await postAck(api, payload).catch((e) => warn('SQLite ack post failed (exception)', e));
+  await postAck(base, payload).catch((e) => warn('SQLite ack post failed (exception)', e));
 
   const ctx = await loadBatchContext(base, batchId);
   if (!ctx || ctx.docCount === 0 || !email) return;
@@ -30,7 +31,7 @@ async function processAcknowledgement(payload: any): Promise<void> {
   const flagKeyUser = `sunbeth:hrUserNotified:${batchId}:${email}`;
   if (getLocalFlag(flagKeyUser)) return;
 
-  const recipientsAll = (await getNotificationEmails(base)).map((a) => ({ address: a }));
+  const recipientsAll = (await getNotificationEmails(base, batchId, email)).map((a) => ({ address: a }));
   if (recipientsAll.length === 0) return;
 
   const recipientRow = findRecipientRow(ctx.recipients, email);
@@ -51,16 +52,20 @@ async function postAck(api: string, payload: any): Promise<void> {
     documentId: payload.documentId,
     email: (payload.userPrincipalName || payload.userEmail || payload.user || payload.userDisplay || '').toLowerCase() || payload.email || '',
   };
-  const ackRes = await fetch(`${api}/api/ack`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ackPayload) });
-  if (!ackRes.ok) warn('SQLite ack post failed', { status: ackRes.status, body: await ackRes.text().catch(() => '') });
+  try {
+    await apiPost(`/api/ack`, ackPayload);
+  } catch (e: any) {
+    const status = (e && typeof e.message === 'string' && /\b(\d{3})$/.test(e.message)) ? Number(RegExp.$1) : undefined;
+    warn('SQLite ack post failed', { status, error: e?.message || String(e) });
+  }
 }
 
 async function loadBatchContext(base: string, batchId: string): Promise<{ batch: any; recipients: any[]; documents: any[]; docCount: number } | null> {
-  const batches = await fetch(`${base}/api/batches`).then((r) => r.json()).catch(() => []);
+  const batches = await apiGet(`/api/batches`).catch(() => [] as any[]);
   const batch = (Array.isArray(batches) ? batches : []).find((b: any) => String(b.toba_batchid || b.id) === batchId);
   const [recipients, documents] = await Promise.all([
-    fetch(`${base}/api/batches/${encodeURIComponent(batchId)}/recipients`).then((r) => r.json()).catch(() => []),
-    fetch(`${base}/api/batches/${encodeURIComponent(batchId)}/documents`).then((r) => r.json()).catch(() => []),
+    apiGet(`/api/batches/${encodeURIComponent(batchId)}/recipients`).catch(() => [] as any[]),
+    apiGet(`/api/batches/${encodeURIComponent(batchId)}/documents`).catch(() => [] as any[]),
   ]);
   const docCount = Array.isArray(documents) ? documents.length : 0;
   if (docCount === 0) return null;
@@ -68,16 +73,15 @@ async function loadBatchContext(base: string, batchId: string): Promise<{ batch:
 }
 
 async function isUserComplete(base: string, batchId: string, email: string, docCount: number): Promise<boolean> {
-  const acksRes = await fetch(`${base}/api/batches/${encodeURIComponent(batchId)}/acks?email=${encodeURIComponent(email)}`, { cache: 'no-store' });
-  const j = await acksRes.json().catch(() => ({ ids: [] }));
+  const j = await apiGet(`/api/batches/${encodeURIComponent(batchId)}/acks?email=${encodeURIComponent(email)}`).catch(() => ({ ids: [] } as any));
   const acked = Array.isArray(j?.ids) ? j.ids.length : 0;
   return acked >= docCount;
 }
 
-async function getNotificationEmails(base: string): Promise<string[]> {
+async function getNotificationEmails(base: string, batchId?: string, email?: string): Promise<string[]> {
   try {
-    const res = await fetch(`${base}/api/notification-emails`);
-    const j = await res.json();
+    const qs = batchId && email ? `?batchId=${encodeURIComponent(batchId)}&email=${encodeURIComponent(email)}` : '';
+    const j = await apiGet(`/api/notification-emails${qs}`);
     const list = Array.isArray(j?.emails) ? j.emails : [];
     if (list.length > 0) return list.map((s: string) => String(s || '').trim().toLowerCase()).filter(Boolean);
   } catch (err) {
@@ -98,7 +102,7 @@ function findRecipientRow(recipients: any[], email: string): any | null {
 async function findBusinessName(base: string, recipientRow: any): Promise<string | undefined> {
   try {
     if (!recipientRow?.businessId) return undefined;
-    const biz = await fetch(`${base}/api/businesses`, { cache: 'no-store' }).then((r) => r.json()).catch(() => []);
+    const biz = await apiGet(`/api/businesses`).catch(() => [] as any[]);
     const match = (Array.isArray(biz) ? biz : []).find((b: any) => String(b.id ?? b.businessId ?? b.ID ?? b.toba_businessid) === String(recipientRow.businessId));
     return match ? String(match.name || match.Title || match.title || match.code || 'Business') : undefined;
   } catch {
@@ -203,8 +207,7 @@ async function checkBatchCompleteFlag(base: string, batchId: string, recipients:
   const uniqueEmails = Array.from(new Set(emails));
   for (const em of uniqueEmails) {
     try {
-      const res = await fetch(`${base}/api/batches/${encodeURIComponent(batchId)}/acks?email=${encodeURIComponent(em)}`, { cache: 'no-store' });
-      const jj = await res.json().catch(() => ({ ids: [] }));
+      const jj = await apiGet(`/api/batches/${encodeURIComponent(batchId)}/acks?email=${encodeURIComponent(em)}`).catch(() => ({ ids: [] } as any));
       const cnt = Array.isArray(jj?.ids) ? jj.ids.length : 0;
       if (cnt < docCount) return;
     } catch { return; }
@@ -309,14 +312,7 @@ async function recordCertificate(base: string, data: {
   primaryGroup?: string;
   documents?: string[];
 }): Promise<void> {
-  await fetch(`${base}/api/certificates/record`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  }).then(async (r) => {
-    if (!r.ok) throw new Error(`record_failed ${r.status}`);
-    return r.json().catch(() => ({}));
-  }).then(() => undefined);
+  await apiPost(`/api/certificates/record`, data).then(() => undefined);
 }
 
 async function notifyAdmins(args: { ctx: { batch: any; docCount: number }; email: string; payload: any; recipientRow: any; businessName?: string; recipientsAll: Array<{ address: string }>; docTitles: string[] }): Promise<void> {

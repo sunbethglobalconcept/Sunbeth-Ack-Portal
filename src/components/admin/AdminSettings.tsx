@@ -1,6 +1,6 @@
 /* eslint-disable max-lines-per-function, complexity, max-lines */
 import React, { useEffect, useState } from 'react';
-// import { useAuth as useAuthCtx } from '../../context/AuthContext';
+import { useAuth as useAuthCtx } from '../../context/AuthContext';
 import { useFeatureFlags } from '../../context/FeatureFlagsContext';
 import { useRBAC } from '../../context/RBACContext';
 import { isPoliciesEnabled, isCertificateAttachmentEnabled, setCertificateAttachmentEnabled, isAcknowledgedAttachmentsEnabled, setAcknowledgedAttachmentsEnabled } from '../../utils/runtimeConfig';
@@ -12,6 +12,7 @@ type AdminSettingsProps = { canEdit: boolean };
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   const { refresh: refreshFlags } = useFeatureFlags();
+  const { account } = useAuthCtx();
   const { isSuperAdmin } = useRBAC();
   const storageKey = 'admin_settings';
   const [settings, setSettings] = useState({
@@ -37,6 +38,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   const [reminderPreview, setReminderPreview] = useState<{ actionable: number; skippedRecent: number; error?: string; enabled?: boolean } | null>(null);
   const [certAttachEnabled, setCertAttachEnabled] = useState<boolean>(() => isCertificateAttachmentEnabled());
   const [ackDocsAttachEnabled, setAckDocsAttachEnabled] = useState<boolean>(() => isAcknowledgedAttachmentsEnabled());
+  // SharePoint settings (Site + Library)
+  const [spSiteName, setSpSiteName] = useState<string>('');
+  const [spLibraryName, setSpLibraryName] = useState<string>('');
+  const [spLoading, setSpLoading] = useState<boolean>(false);
+  const [spSaving, setSpSaving] = useState<boolean>(false);
 
   useEffect(() => {
     try {
@@ -94,6 +100,40 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
   } catch { /* ignore */ }
     })();
   }, [apiBase]);
+
+  // Load SharePoint settings (public settings API, same pattern as external/legal)
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!apiBase) return;
+        setSpLoading(true);
+        try {
+          const res = await fetch(`${apiBase}/api/settings/sharepoint`, { cache: 'no-store' });
+          if (res.ok) {
+            const j = await res.json().catch(() => ({}));
+            setSpSiteName(String(j?.siteName || ''));
+            setSpLibraryName(String(j?.libraryName || ''));
+          }
+        } catch { /* ignore */ }
+      } catch { /* ignore */ }
+      finally { setSpLoading(false); }
+    })();
+  }, [apiBase]);
+
+  const saveSharePointSettings = async () => {
+    if (!canEdit || !apiBase) return;
+    setSpSaving(true);
+    try {
+      const body = { siteName: spSiteName, libraryName: spLibraryName };
+      const res = await fetch(`${apiBase}/api/settings/sharepoint`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error('save_failed');
+      showToast('SharePoint settings saved', 'success');
+    } catch {
+      showToast('Failed to save SharePoint settings', 'error');
+    } finally {
+      setSpSaving(false);
+    }
+  };
 
   const apply = () => {
     if (!canEdit) return;
@@ -300,6 +340,43 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ canEdit }) => {
               />
               <span>{ackDocsAttachEnabled ? 'Enabled' : 'Disabled'}</span>
             </label>
+          </div>
+        </div>
+      )}
+      {/* SharePoint Library Configuration */}
+      {isSuperAdmin && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>SharePoint Upload Destination</div>
+              <div className="small muted">Configure the Site and Document Library used for completion PDF uploads.</div>
+              {spLoading ? (
+                <div className="small muted" style={{ marginTop: 6 }}>Loading…</div>
+              ) : (!spSiteName || !spLibraryName ? (
+                <div className="small muted" style={{ marginTop: 6 }}>Not configured</div>
+              ) : (
+                <div className="small" style={{ marginTop: 6 }}>Site: {spSiteName} · Library: {spLibraryName}</div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 12, alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Site name (e.g., Human Resource Group)"
+              value={spSiteName}
+              onChange={(e) => setSpSiteName(e.target.value)}
+              disabled={!canEdit || spLoading}
+            />
+            <input
+              type="text"
+              placeholder="Library name (e.g., EML - Employee Management Library)"
+              value={spLibraryName}
+              onChange={(e) => setSpLibraryName(e.target.value)}
+              disabled={!canEdit || spLoading}
+            />
+            <button className="btn sm" onClick={saveSharePointSettings} disabled={!canEdit || spSaving}>
+              {spSaving ? 'Saving…' : 'Save'}
+            </button>
           </div>
         </div>
       )}

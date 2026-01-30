@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function, complexity */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +16,7 @@ const CompletedBatch: React.FC = () => {
   const [ackIds, setAckIds] = useState<string[]>([]);
   const [batchName, setBatchName] = useState<string>('');
   const [downloading, setDownloading] = useState<boolean>(false);
+  const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [recipientRow, setRecipientRow] = useState<any | null>(null);
 
@@ -74,7 +76,16 @@ const CompletedBatch: React.FC = () => {
       const dept = recipientRow?.department || undefined;
       const jobTitle = recipientRow?.jobTitle || undefined;
       const location = recipientRow?.location || undefined;
-      const bizName = recipientRow?.businessName || undefined;
+      let bizName = recipientRow?.businessName || undefined;
+      // Resolve business name from businessId if missing (needed for SharePoint upload)
+      if (!bizName && recipientRow?.businessId) {
+        try {
+          const base = getApiBase();
+          const list = base ? await fetch(`${base}/api/businesses`, { cache: 'no-store' }).then(r => r.json()).catch(() => []) : [];
+          const match = (Array.isArray(list) ? list : []).find((b: any) => String(b.id ?? b.businessId ?? b.ID ?? b.toba_businessid) === String(recipientRow.businessId));
+          bizName = match ? String(match.name || match.Title || match.title || match.code || 'Business') : bizName;
+        } catch { /* noop */ }
+      }
       const payload = {
         batchName: batchName || `Batch ${id}`,
         userEmail: email,
@@ -109,6 +120,68 @@ const CompletedBatch: React.FC = () => {
     }
   };
 
+  const handleUploadToSharePoint = async () => {
+    if (!id) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const email = (account?.username || externalUser?.email || '').toString();
+      const userName = (account?.name || externalUser?.name || email || '').toString();
+      const titles = ackedDocs.map(d => d.toba_title).filter(Boolean);
+      const dept = recipientRow?.department || undefined;
+      const jobTitle = recipientRow?.jobTitle || undefined;
+      const location = recipientRow?.location || undefined;
+      let bizName = recipientRow?.businessName || undefined;
+      if (!bizName && recipientRow?.businessId) {
+        try {
+          const base = getApiBase();
+          const list = base ? await fetch(`${base}/api/businesses`, { cache: 'no-store' }).then(r => r.json()).catch(() => []) : [];
+          const match = (Array.isArray(list) ? list : []).find((b: any) => String(b.id ?? b.businessId ?? b.ID ?? b.toba_businessid) === String(recipientRow.businessId));
+          bizName = match ? String(match.name || match.Title || match.title || match.code || 'Business') : bizName;
+        } catch { /* noop */ }
+      }
+      const payload = {
+        batchName: batchName || `Batch ${id}`,
+        userEmail: email,
+        userName,
+        completedOn: new Date().toISOString(),
+        documents: titles,
+        department: dept,
+        jobTitle,
+        location,
+        businessName: bizName,
+      };
+      console.info('[CompletedBatch] Generating PDF for SharePoint upload', { email, businessName: bizName, department: dept });
+      const file = await generateUserCompletionPdf(payload);
+      const base = getApiBase();
+      if (!base) throw new Error('API base not configured');
+      const body = {
+        businessName: bizName || 'Business',
+        department: dept || 'Department',
+        userEmail: email,
+        contentBytes: file.contentBytes,
+        fileName: file.name,
+      };
+      console.info('[CompletedBatch] Uploading to SharePoint', { endpoint: '/api/sharepoint/upload-completion-pdf', ...body, contentBytesLength: body.contentBytes.length });
+      const resp = await fetch(`${base}/api/sharepoint/upload-completion-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      let json: any = null;
+      try { json = await resp.json(); } catch { /* ignore parse error */ }
+      console.info('[CompletedBatch] Upload result', { status: resp.status, body: json });
+      if (!resp.ok) throw new Error(json?.error || `Upload failed (${resp.status})`);
+      alert('Uploaded to SharePoint successfully.');
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.error('[CompletedBatch] Upload failed', msg);
+      setError(`Upload to SharePoint failed: ${msg}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="container">
       <div className="card">
@@ -120,6 +193,9 @@ const CompletedBatch: React.FC = () => {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="btn sm" onClick={() => handleDownloadCompletedPdf()} disabled={downloading || ackedDocs.length === 0}>
               {downloading ? 'Preparing…' : 'Download PDF'}
+            </button>
+            <button className="btn sm" onClick={() => handleUploadToSharePoint()} disabled={uploading || ackedDocs.length === 0}>
+              {uploading ? 'Uploading…' : 'Upload to SharePoint'}
             </button>
             <Link to="/"><button className="btn ghost sm">← Back to Dashboard</button></Link>
           </div>
