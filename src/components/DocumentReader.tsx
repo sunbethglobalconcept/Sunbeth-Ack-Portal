@@ -42,15 +42,20 @@ const DocumentReader: React.FC = () => {
   const params = new URLSearchParams(location.search);
   const batchIdFromQuery = params.get('batchId') || undefined;
 
-  const {
-    docs,
-    index,
-    progressText,
-    alreadyAcked,
-    ackCheckReady,
-    setProgressText,
-  } = useBatchAndProgress(id, batchIdFromQuery, token ?? undefined, (account?.username || externalUser?.email || undefined));
-  const userName = (account?.name || account?.username || externalUser?.name || externalUser?.email || '').toString();
+  const { docs, index, progressText, alreadyAcked, ackCheckReady, setProgressText } =
+    useBatchAndProgress(
+      id,
+      batchIdFromQuery,
+      token ?? undefined,
+      account?.username || externalUser?.email || undefined
+    );
+  const userName = (
+    account?.name ||
+    account?.username ||
+    externalUser?.name ||
+    externalUser?.email ||
+    ''
+  ).toString();
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [businesses, setBusinesses] = useState<Array<{ id: number | string; name: string }>>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | string | null>(null);
@@ -62,21 +67,23 @@ const DocumentReader: React.FC = () => {
     (async () => {
       try {
         const r = await apiGet<any>(`/api/businesses/active`);
-        const list = Array.isArray(r?.businesses) ? r.businesses : (Array.isArray(r) ? r : []);
+        const list = Array.isArray(r?.businesses) ? r.businesses : Array.isArray(r) ? r : [];
         if (mounted) setBusinesses(list);
-      } catch { /* ignore fetch errors; selector will remain empty */ }
+      } catch {
+        /* ignore fetch errors; selector will remain empty */
+      }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
-
-
 
   const { onAccept, toastMsg, showToast } = useAcceptHandler({
     ack,
     id,
     title,
-    username: (account?.username || externalUser?.email || undefined),
-    displayName: (account?.name || externalUser?.name || externalUser?.email || undefined),
+    username: account?.username || externalUser?.email || undefined,
+    displayName: account?.name || externalUser?.name || externalUser?.email || undefined,
     batchIdFromQuery,
     index,
     docs,
@@ -93,10 +100,16 @@ const DocumentReader: React.FC = () => {
       if (email && selectedBusinessId) {
         // Best-effort persist; ignore failures so user isn't blocked
         try {
-          await apiPut(`/api/users/${encodeURIComponent(email)}/business`, { businessId: selectedBusinessId });
-        } catch { /* ignore */ }
+          await apiPut(`/api/users/${encodeURIComponent(email)}/business`, {
+            businessId: selectedBusinessId,
+          });
+        } catch {
+          /* ignore */
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     onAccept();
   };
 
@@ -104,17 +117,25 @@ const DocumentReader: React.FC = () => {
 
   const { prevDoc, nextDoc } = useDocNavigation(docs, index, batchIdFromQuery, navigate);
 
-  const currentDoc = (Array.isArray(docs) && index >= 0 && index < docs.length) ? docs[index] : undefined as any;
+  const currentDoc =
+    Array.isArray(docs) && index >= 0 && index < docs.length ? docs[index] : (undefined as any);
   const rawUrl = currentDoc?.toba_fileurl || (currentDoc as any)?.url || '';
   // Resolve API base via runtime config; if not set, use same-origin relative '/api'
   const cfgBase = getApiBaseCfg();
   const apiBase = cfgBase ? cfgBase : '';
 
-  const getTokenAdapter = getToken ? (async (scopes?: string[]) => {
-    const t = await getToken(scopes);
-    return t === null ? undefined : t;
-  }) : undefined;
-  const { docUrl, needGraphAuth } = useDocUrlResolution(currentDoc, apiBase, getTokenAdapter, refreshKey);
+  const getTokenAdapter = getToken
+    ? async (scopes?: string[]) => {
+        const t = await getToken(scopes);
+        return t === null ? undefined : t;
+      }
+    : undefined;
+  const { docUrl, needGraphAuth } = useDocUrlResolution(
+    currentDoc,
+    apiBase,
+    getTokenAdapter,
+    refreshKey
+  );
   const contentType = useContentTypeProbe(docUrl, apiBase);
 
   // resolved via useDocUrlResolution
@@ -122,15 +143,26 @@ const DocumentReader: React.FC = () => {
   // content-type probing via useContentTypeProbe
   // const docTitle = currentDoc?.toba_title || `Document ${id}`;
   // Determine viewer by URL extension or content-type (set by diagnostics)
-  const { isPdf, isDocx, proxiedDownloadUrl, openInNewTabUrl, viewerUrls } = useViewerDecision(rawUrl, docUrl, contentType);
+  const { isPdf, isDocx, proxiedDownloadUrl, openInNewTabUrl, viewerUrls } = useViewerDecision(
+    rawUrl,
+    docUrl,
+    contentType
+  );
 
   const originalUrl = (currentDoc as any)?.toba_originalurl as string | undefined;
 
   return (
     <div className="container">
       <div className="card">
-  <HeaderBar title={title} />
-  <ConsentBanner show={!!(batchIdFromQuery && !hasConsent((account?.username || externalUser?.email || undefined), batchIdFromQuery))} />
+        <HeaderBar title={title} />
+        <ConsentBanner
+          show={
+            !!(
+              batchIdFromQuery &&
+              !hasConsent(account?.username || externalUser?.email || undefined, batchIdFromQuery)
+            )
+          }
+        />
         <GraphAccessHint
           visible={needGraphAuth}
           onGrant={async () => {
@@ -139,9 +171,11 @@ const DocumentReader: React.FC = () => {
               if (!account) {
                 await login();
               }
-              await getToken?.(['Files.Read.All','Sites.Read.All']);
-              setRefreshKey(k => k + 1);
-            } catch (e) { /* noop */ }
+              await getToken?.(['Files.Read.All', 'Sites.Read.All']);
+              setRefreshKey((k) => k + 1);
+            } catch (e) {
+              /* noop */
+            }
           }}
         />
         <ViewerFrame
@@ -150,14 +184,16 @@ const DocumentReader: React.FC = () => {
           viewerUrls={viewerUrls}
           docUrl={docUrl}
           needGraphAuth={needGraphAuth}
-          onLastPageChange={(isLast) => setIsLastPage(prev => prev || isLast)}
+          onLastPageChange={(isLast) => setIsLastPage((prev) => prev || isLast)}
         />
         <ActionLinks
           docUrl={docUrl || ''}
           openInNewTabUrl={openInNewTabUrl || ''}
           proxiedDownloadUrl={proxiedDownloadUrl || ''}
           originalUrl={originalUrl}
-          selectedBusinessName={(businesses.find(b => String(b.id) === String(selectedBusinessId)) || undefined)?.name}
+          selectedBusinessName={
+            (businesses.find((b) => String(b.id) === String(selectedBusinessId)) || undefined)?.name
+          }
         />
         <AcceptControls
           ready={ackCheckReady}
