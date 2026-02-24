@@ -189,7 +189,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           {(() => {
             const src = getBrandLogoUrl();
             const isAbs = src && /^(https?:)?\//i.test(src as string);
-            const url = src && src.startsWith('/') ? `${window.location.origin}${src}` : (src || '/brand/sunbeth-logo.png');
+            const url = src && src.startsWith('/') ? `${window.location.origin}${src}` : (src || '/brand/SunbethGlobal.png');
             return (
               <img
                 src={url}
