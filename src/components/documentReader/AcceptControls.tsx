@@ -25,7 +25,7 @@ const AckStatement: React.FC<{
   onAckChange: (checked: boolean) => void;
   isLastPage?: boolean;
 }> = ({ userName, ack, onAckChange, isLastPage }) => (
-  <label className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+  <label className="small ack-statement">
     <input
       type="checkbox"
       checked={ack}
@@ -62,15 +62,18 @@ const AckStatement: React.FC<{
   </label>
 );
 
-const BusinessSelector: React.FC<{ businesses: BusinessOption[]; selectedBusinessId: number | string | null; onBusinessChange?: (businessId: number | string) => void; }> = ({ businesses, selectedBusinessId, onBusinessChange }) => (
-  <div className="small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+const BusinessSelector: React.FC<{
+  businesses: BusinessOption[];
+  selectedBusinessId: number | string | null;
+  onBusinessChange?: (businessId: number | string) => void;
+}> = ({ businesses, selectedBusinessId, onBusinessChange }) => (
+  <div className="small business-select">
     <span>Business</span>
     <select
       id="businessSelect"
       className="input"
       value={selectedBusinessId != null ? String(selectedBusinessId) : ''}
       onChange={e => onBusinessChange && onBusinessChange(e.target.value)}
-      style={{ minWidth: 220 }}
     >
       <option value="" disabled>
         {(businesses || []).length === 0 ? 'No businesses available' : 'Select your business'}
@@ -97,8 +100,8 @@ const AcceptControls: React.FC<AcceptControlsProps> = ({
   if (!ready || alreadyAcked) return null;
   const disabled = !ack || !selectedBusinessId;
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, flexWrap: 'wrap' }}>
+    <div className="accept-controls">
+      <div className="accept-controls-fields">
         <AckStatement userName={userName} ack={ack} onAckChange={onAckChange} isLastPage={isLastPage} />
         <BusinessSelector businesses={businesses} selectedBusinessId={selectedBusinessId} onBusinessChange={onBusinessChange} />
       </div>

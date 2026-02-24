@@ -12,12 +12,20 @@ interface ViewerFrameProps {
   onLastPageChange?: (isLast: boolean) => void;
 }
 
-const ViewerFrame: React.FC<ViewerFrameProps> = ({ isPdf, isDocx, viewerUrls, docUrl, needGraphAuth, onLastPageChange }) => {
+const ViewerFrame: React.FC<ViewerFrameProps> = ({
+  isPdf,
+  isDocx,
+  viewerUrls,
+  docUrl,
+  needGraphAuth,
+  onLastPageChange,
+}) => {
   return (
-    <div className="viewer" style={{ marginTop: 12 }}>
+    <div className="viewer dr-viewer">
       {docUrl ? (
         isPdf ? (
           <PdfViewer url={viewerUrls} onLastPageChange={onLastPageChange} />
+          // <>hi</>
         ) : isDocx ? (
           <DocxViewer url={Array.isArray(viewerUrls) ? viewerUrls[0] : viewerUrls} />
         ) : (

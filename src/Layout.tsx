@@ -33,6 +33,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [stickyHeader, setStickyHeader] = useState<boolean>(() => {
     try { return (localStorage.getItem('sunbeth_sticky_header') || 'true') === 'true'; } catch { return true; }
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {
     // Persist the chosen theme, but avoid forcing the DOM attribute here to prevent
     // racing against ThemeController/TenantProvider initial application.
@@ -165,11 +166,24 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     }
   }, [account, location.pathname, navigate]);
   const showAside = !!((account || isExternal) && (location.pathname === '/' || location.pathname.startsWith('/dashboard')));
+  const headerActionsClass = `header-actions ${account || isExternal ? 'is-auth' : 'is-public'}`;
+  const headerClass = `${stickyHeader ? 'app-header sticky' : 'app-header'} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`;
+  const userDisplayName = account?.name || externalUser?.name || externalUser?.email || 'User';
+  const userInitial = (account?.name || externalUser?.name || externalUser?.email || 'U').slice(0, 1).toUpperCase();
+  const handleLogout = () => {
+    if (account) logout();
+    else if (isExternal) externalLogout();
+  };
+
+  // Close mobile menu when navigating or auth context changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname, account, isExternal]);
   return (
     <>
       {/* Global busy overlay (dancing logo) */}
       <DancingLogoOverlay />
-  <header className={stickyHeader ? 'sticky' : ''}>
+      <header className={headerClass}>
         <div className="brand">
           {/* Use configured brand logo; fall back gracefully if it fails to load */}
           {(() => {
@@ -196,9 +210,32 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           </div>
         </div>
 
+        {(account || isExternal) && (
+          <div className="header-quick" aria-label="Quick user controls">
+            <button
+              className="mobile-menu-toggle"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+
+            <div className="header-chip" title={userDisplayName}>
+              <div className="chip-avatar">{userInitial}</div>
+            </div>
+
+            {/* <button className="btn outline sm logout-btn" onClick={handleLogout}>
+              ↩ Logout
+            </button> */}
+          </div>
+        )}
+
         {/* show auth area when signed-in (MSAL) or as external; else show a light nav */}
         {account ? (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className={`${headerActionsClass} signed-in`}>
             <AppWelcomeTour />
             {rbac.isSuperAdmin && (
               <div title="Super Admin (from REACT_APP_SUPER_ADMINS)" style={{ background: '#fee2e2', color: '#991b1b', padding: '6px 8px', borderRadius: 6, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -208,36 +245,36 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
             <button className="btn ghost sm" aria-label="Toggle theme" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; setTheme(next); try { document.documentElement.setAttribute('data-theme', next); window.dispatchEvent(new CustomEvent('sunbeth:themeChanged')); } catch { /* ignore */ } }}>{theme === 'light' ? 'Dark' : 'Light'} Mode</button>
             <button className="btn ghost sm" aria-label="Toggle sticky header" onClick={() => setStickyHeader(s => !s)}>{stickyHeader ? 'Unpin Header' : 'Pin Header'}</button>
 
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '6px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 }}>
+            <div className="header-user">
               <div style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', background: '#fff' }}>
                 {photo ? <img src={photo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="avatar" /> : <div style={{ width: '100%', height: '100%', background: '#ccc' }} />}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }} className="header-user-meta">
                 <div style={{ fontWeight: 700, color: '#fff' }}>{account.name}</div>
                 <div style={{ color: '#ddd', fontSize: 13 }}>{account.username}</div>
               </div>
-              <button className="btn sm" onClick={() => logout()}>Sign out</button>
+              <button className="btn sm" onClick={handleLogout}>Sign out</button>
             </div>
           </div>
         ) : isExternal ? (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className={`${headerActionsClass} signed-in`}>
             <AppWelcomeTour />
             <button className="btn ghost sm" aria-label="Toggle theme" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; setTheme(next); try { document.documentElement.setAttribute('data-theme', next); window.dispatchEvent(new CustomEvent('sunbeth:themeChanged')); } catch { /* ignore */ } }}>{theme === 'light' ? 'Dark' : 'Light'} Mode</button>
             <button className="btn ghost sm" aria-label="Toggle sticky header" onClick={() => setStickyHeader(s => !s)}>{stickyHeader ? 'Unpin Header' : 'Pin Header'}</button>
 
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '6px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 }}>
+            <div className="header-user">
               <div style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111', fontWeight: 700 }}>
                 {(externalUser?.name || externalUser?.email || 'U').slice(0,1).toUpperCase()}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }} className="header-user-meta">
                 <div style={{ fontWeight: 700, color: '#fff' }}>{externalUser?.name || 'External User'}</div>
                 <div style={{ color: '#ddd', fontSize: 13 }}>{externalUser?.email}</div>
               </div>
-              <button className="btn sm" onClick={() => externalLogout()}>Sign out</button>
+              <button className="btn sm" onClick={handleLogout}>Sign out</button>
             </div>
           </div>
         ) : (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div className={`${headerActionsClass} guest`}>
             <AppWelcomeTour />
             <a href="/about" className="small" style={{ color: '#fff', textDecoration: 'none', opacity: .95 }}>About</a>
             <button className="btn ghost sm" aria-label="Toggle theme" onClick={() => { const next = theme === 'light' ? 'dark' : 'light'; setTheme(next); try { document.documentElement.setAttribute('data-theme', next); window.dispatchEvent(new CustomEvent('sunbeth:themeChanged')); } catch { /* ignore */ } }}>{theme === 'light' ? 'Dark' : 'Light'} Mode</button>

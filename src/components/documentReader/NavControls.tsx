@@ -8,11 +8,11 @@ interface NavControlsProps {
 
 const NavControls: React.FC<NavControlsProps> = ({ onPrev, onNext, progressText }) => {
   return (
-    <div style={{ marginTop: 12 }}>
+    <div className="dr-nav">
       <div className="controls">
         <button className="btn ghost sm" id="btnPrev" onClick={onPrev}>← Previous</button>
         <div className="spacer" />
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="dr-nav-next">
           <button className="btn ghost sm" id="btnNext" onClick={onNext}>Next →</button>
         </div>
       </div>

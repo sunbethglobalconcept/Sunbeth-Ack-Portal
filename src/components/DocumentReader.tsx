@@ -152,8 +152,8 @@ const DocumentReader: React.FC = () => {
   const originalUrl = (currentDoc as any)?.toba_originalurl as string | undefined;
 
   return (
-    <div className="container">
-      <div className="card">
+    <div className="container document-reader">
+      <div className="card dr-card">
         <HeaderBar title={title} />
         <ConsentBanner
           show={

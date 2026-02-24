@@ -9,25 +9,31 @@ interface ActionLinksProps {
   selectedBusinessName?: string;
 }
 
-const ActionLinks: React.FC<ActionLinksProps> = ({ docUrl, openInNewTabUrl, proxiedDownloadUrl, originalUrl, selectedBusinessName }) => {
+const ActionLinks: React.FC<ActionLinksProps> = ({
+  docUrl,
+  openInNewTabUrl,
+  proxiedDownloadUrl,
+  originalUrl,
+  selectedBusinessName,
+}) => {
   if (!docUrl && !originalUrl) return null;
   return (
-    <div className="row" style={{ marginTop: 8 }}>
+    <div className="row dr-actions">
       {selectedBusinessName ? (
         <span className="badge" style={{ alignSelf: 'center' }} title="Selected business">
           {selectedBusinessName}
         </span>
       ) : null}
       {docUrl && (
-        <a href={openInNewTabUrl} target="_blank" rel="noopener noreferrer" style={{ marginRight: 12 }}>Open in new tab ↗</a>
+        <a href={openInNewTabUrl} target="_blank" rel="noopener noreferrer" className="btn ghost xs">Open in new tab ↗</a>
       )}
       {docUrl && (
         <a href={proxiedDownloadUrl} className="btn ghost xs">Download</a>
       )}
       {originalUrl && originalUrl !== docUrl && (
         <>
-          {docUrl && <span style={{ margin: '0 8px', color: '#bbb' }}>|</span>}
-          <a href={originalUrl} target="_blank" rel="noopener noreferrer">View in SharePoint</a>
+          {docUrl && <span className="dr-actions-divider">|</span>}
+          <a href={originalUrl} target="_blank" rel="noopener noreferrer" className="btn ghost xs">View in SharePoint</a>
         </>
       )}
     </div>

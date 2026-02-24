@@ -24,6 +24,10 @@ header{background:var(--primary);color:#fff;padding:14px 22px;display:flex;justi
 .hero-text .eyebrow{color:var(--accent);font-weight:700;margin-bottom:8px;letter-spacing:.4px;text-transform:uppercase}
 .hero-title{font-size:30px;margin:0;color:var(--primary)}
 .hero-lead{color:#334;line-height:1.55;margin-top:10px}
+
+:root[data-theme='dark'] .hero-lead {color:rgb(255, 255, 255)}
+:root[data-theme='dark'] .features {color:rgb(255, 255, 255)}
+
 .features{margin:12px 0;padding-left:18px;color:#444}
 .features li{margin-bottom:8px}
 .hero-visual img{box-shadow:0 16px 36px rgba(12,83,67,0.12)}
