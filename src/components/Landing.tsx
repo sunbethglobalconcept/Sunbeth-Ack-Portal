@@ -9,12 +9,51 @@ const Landing: React.FC = () => {
   const { externalSupport, loaded } = useFeatureFlags();
   const [signingIn, setSigningIn] = useState(false);
   const [variant, setVariant] = useState<string>(() => { try { return localStorage.getItem('landing_variant') || 'regular'; } catch { return 'regular'; } });
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const attr = document.documentElement.getAttribute('data-theme');
+      return attr === 'dark' ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
+  });
   useEffect(() => {
     const read = () => { try { setVariant(localStorage.getItem('landing_variant') || 'regular'); } catch { /* noop */ } };
     const onStorage = (e: StorageEvent) => { if (!e.key || e.key === 'landing_variant') read(); };
     window.addEventListener('storage', onStorage as EventListener);
     return () => {
       window.removeEventListener('storage', onStorage as EventListener);
+    };
+  }, []);
+  useEffect(() => {
+    const readTheme = () => {
+      try {
+        const attr = document.documentElement.getAttribute('data-theme');
+        setTheme(attr === 'dark' ? 'dark' : 'light');
+      } catch { /* ignore */ }
+    };
+
+    readTheme();
+
+    let observer: MutationObserver | null = null;
+    try {
+      observer = new MutationObserver((mutations) => {
+        if (mutations.some((m) => m.type === 'attributes' && m.attributeName === 'data-theme')) {
+          readTheme();
+        }
+      });
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    } catch { /* ignore */ }
+
+    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === 'sunbeth_theme') readTheme(); };
+    const onThemeChanged = () => readTheme();
+    try { window.addEventListener('storage', onStorage); } catch { /* ignore */ }
+    try { window.addEventListener('sunbeth:themeChanged', onThemeChanged as EventListener); } catch { /* ignore */ }
+
+    return () => {
+      if (observer) observer.disconnect();
+      try { window.removeEventListener('storage', onStorage); } catch { /* ignore */ }
+      try { window.removeEventListener('sunbeth:themeChanged', onThemeChanged as EventListener); } catch { /* ignore */ }
     };
   }, []);
   return (
@@ -54,7 +93,7 @@ const Landing: React.FC = () => {
           </div>
 
           <div className="hero-visual" style={{ display: 'flex', justifyContent: 'center' }}>
-            <img src="/images/landing_image.png" alt="Sunbeth Document Acknowledgement" style={{ width: '100%', maxWidth: 420, borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }} />
+            <img src={theme === 'dark' ? '/images/landing_image_dark.png' : '/images/landing_image.png'} alt="Sunbeth Document Acknowledgement" style={{ width: '100%', maxWidth: 420, borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }} />
           </div>
         </div>
       </div>
