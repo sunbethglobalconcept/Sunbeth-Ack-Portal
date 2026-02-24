@@ -302,39 +302,39 @@ header .btn.ghost:hover,
 
 .accept-controls {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
   align-items: flex-start;
-  flex-wrap: wrap;
-  row-gap: 8px;
 }
 
 .accept-controls-fields {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  flex: 1 1 420px;
-  flex-wrap: wrap;
-  row-gap: 10px;
+  gap: 4px;
+  flex: 1 1 100%;
 }
 
 .ack-statement {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
-  line-height: 1.4;
-  flex: 1 1 260px;
+  align-items: center;
+  line-height: 1.35;
+  flex: 1 1 100%;
+  flex-wrap: nowrap;
 }
 
 .ack-statement input {
-  margin-top: 1px;
+  margin-top: 0;
 }
 
 .business-select {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 240px;
+  /* flex: 1 1 240px; */
+  margin: 2px 0;
 }
 
 .business-select select {
@@ -558,19 +558,16 @@ header .btn.ghost:hover,
   }
 
   .accept-controls {
-    flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
 
   .accept-controls-fields {
-    flex-direction: column;
-    flex: 1 1 auto;
-    gap: 8px;
-    row-gap: 8px;
+    gap: 6px;
   }
 
   .ack-statement {
     flex: 1 1 100%;
+    flex-wrap: wrap;
   }
 
   .business-select {
