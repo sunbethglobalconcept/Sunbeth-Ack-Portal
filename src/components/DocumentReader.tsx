@@ -36,7 +36,6 @@ const DocumentReader: React.FC = () => {
   const { account, token, getToken, login } = useAuth();
   const { user: externalUser } = useExternalAuth();
   const [ack, setAck] = useState(false);
-  const title = useMemo(() => `Document ${id}`, [id]);
   const navigate = useNavigate();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -78,10 +77,22 @@ const DocumentReader: React.FC = () => {
     };
   }, []);
 
+  const currentDoc =
+    Array.isArray(docs) && index >= 0 && index < docs.length ? docs[index] : (undefined as any);
+  const rawUrl = currentDoc?.toba_fileurl || (currentDoc as any)?.url || '';
+  const displayTitle = useMemo(() => {
+    return (
+      (currentDoc?.toba_title as string | undefined) ||
+      (currentDoc as any)?.title ||
+      (currentDoc as any)?.name ||
+      `Document`
+    );
+  }, [currentDoc]);
+
   const { onAccept, toastMsg, showToast } = useAcceptHandler({
     ack,
     id,
-    title,
+    title: displayTitle,
     username: account?.username || externalUser?.email || undefined,
     displayName: account?.name || externalUser?.name || externalUser?.email || undefined,
     batchIdFromQuery,
@@ -116,10 +127,6 @@ const DocumentReader: React.FC = () => {
   // loaded via useBatchAndProgress
 
   const { prevDoc, nextDoc } = useDocNavigation(docs, index, batchIdFromQuery, navigate);
-
-  const currentDoc =
-    Array.isArray(docs) && index >= 0 && index < docs.length ? docs[index] : (undefined as any);
-  const rawUrl = currentDoc?.toba_fileurl || (currentDoc as any)?.url || '';
   // Resolve API base via runtime config; if not set, use same-origin relative '/api'
   const cfgBase = getApiBaseCfg();
   const apiBase = cfgBase ? cfgBase : '';
@@ -154,7 +161,7 @@ const DocumentReader: React.FC = () => {
   return (
     <div className="container document-reader">
       <div className="card dr-card">
-        <HeaderBar title={title} />
+        <HeaderBar title={displayTitle} />
         <ConsentBanner
           show={
             !!(
