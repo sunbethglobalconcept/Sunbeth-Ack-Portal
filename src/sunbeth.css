@@ -55,6 +55,8 @@ header,
   flex-wrap: wrap;
   gap: 12px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Optional sticky behavior */
@@ -228,10 +230,23 @@ header .btn.ghost:hover,
   flex-wrap: wrap;
 }
 
+.document-reader {
+  width: 100%;
+  max-width: 100%;
+}
+
 .document-reader .dr-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.document-reader .card {
+  width: 100%;
+  max-width: 100%;
 }
 
 .dr-header {
@@ -257,6 +272,8 @@ header .btn.ghost:hover,
 .dr-viewer {
   margin-top: 12px;
   overflow-x: hidden;
+  width: 100%;
+  max-width: 50%;
 }
 
 .dr-nav {
@@ -338,13 +355,20 @@ header .btn.ghost:hover,
 }
 
 .wrap {
+  width: 100%;
   max-width: 1100px;
+  max-width: min(1100px, 100%);
   margin: 18px auto;
   padding: 0 18px;
   display: flex;
   flex-direction: column;
   /* Assume header ~86px tall as used elsewhere; adjust if header size changes */
   min-height: calc(100vh - 86px);
+}
+
+.container {
+  width: 100%;
+  max-width: min(1100px, 100%);
 }
 
 /* Ensure main content expands so footer sits at the bottom */
@@ -725,7 +749,10 @@ header .btn.ghost:hover,
   overflow: hidden;
   border: var(--border);
   background: var(--card);
-  margin-top: 10px
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .viewer iframe {
@@ -909,6 +936,8 @@ footer {
   box-shadow: var(--shadow);
   font-family: var(--font);
   padding: 18px 18px 20px;
+  width: 100%;
+  max-width: min(520px, 94vw);
 }
 .swal2-sunbeth-title {
   color: var(--primary);

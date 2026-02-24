@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useFeatureFlags } from '../context/FeatureFlagsContext';
+import { useAuth } from './context/AuthContext';
+import { useFeatureFlags } from './context/FeatureFlagsContext';
 
 const Landing: React.FC = () => {
   const { login } = useAuth();
@@ -17,6 +17,7 @@ const Landing: React.FC = () => {
       return 'light';
     }
   });
+
   useEffect(() => {
     const read = () => { try { setVariant(localStorage.getItem('landing_variant') || 'regular'); } catch { /* noop */ } };
     const onStorage = (e: StorageEvent) => { if (!e.key || e.key === 'landing_variant') read(); };
@@ -25,6 +26,7 @@ const Landing: React.FC = () => {
       window.removeEventListener('storage', onStorage as EventListener);
     };
   }, []);
+
   useEffect(() => {
     const readTheme = () => {
       try {
@@ -56,6 +58,7 @@ const Landing: React.FC = () => {
       try { window.removeEventListener('sunbeth:themeChanged', onThemeChanged as EventListener); } catch { /* ignore */ }
     };
   }, []);
+
   return (
     <div className="container" style={{ display: 'flex', justifyContent: 'center' }}>
       <div className={`card hero ${variant === 'compact' ? 'compact' : ''}`} style={{ maxWidth: 920, width: '100%' }}>
@@ -93,7 +96,11 @@ const Landing: React.FC = () => {
           </div>
 
           <div className="hero-visual" style={{ display: 'flex', justifyContent: 'center' }}>
-            <img src={theme === 'dark' ? '/images/landing_image_dark.png' : '/images/landing_image.png'} alt="Sunbeth Document Acknowledgement" style={{ width: '100%', maxWidth: 420, borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }} />
+            <img
+              src={theme === 'dark' ? '/images/landing_image_dark.png' : '/images/landing_image.png'}
+              alt="Sunbeth Document Acknowledgement"
+              style={{ width: '100%', maxWidth: 420, borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.10)' }}
+            />
           </div>
         </div>
       </div>

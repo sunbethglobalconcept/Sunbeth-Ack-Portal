@@ -110,8 +110,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
   // Track container width for fit-to-width and responsive rendering
   useEffect(() => {
     const update = () => {
-      const w = containerRef.current?.clientWidth || Math.min(window.innerWidth - 100, 900);
-      setContainerWidth(Math.max(320, Math.min(1000, w)));
+      const measured = containerRef.current?.getBoundingClientRect().width || 0;
+      const fallback = Math.max(240, Math.min(1000, window.innerWidth - 24));
+      const w = measured > 0 ? measured : fallback;
+      setContainerWidth(w);
     };
     update();
     window.addEventListener('resize', update);
@@ -184,18 +186,24 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
   const pageWidth = Math.floor(containerWidth * scale);
 
   return (
-    <div ref={containerRef} style={{
-      maxHeight: '70vh',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      border: '1px solid #ddd',
-      borderRadius: 6,
-      background: '#f5f5f5'
-    }}>
+    <div
+      ref={containerRef}
+      className="pdf-viewer"
+      style={{
+        maxHeight: '70vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        border: '1px solid #ddd',
+        borderRadius: 6,
+        background: '#f5f5f5',
+        width: '100%',
+        maxWidth: '100%'
+      }}
+    >
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderBottom: '1px solid #e6e6e6', background: '#fff' }}>
-        <button type="button" className="btn ghost xs" onClick={zoomOut} title="Zoom out">−</button>
+      <div className="pdf-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderBottom: '1px solid #e6e6e6', background: '#fff', flexWrap: 'wrap' }}>
+        <button type="button" className="btn ghost xs" onClick={zoomOut} title="Zoom out">-</button>
         <div className="small" style={{ minWidth: 56, textAlign: 'center' }}>{Math.round(scale * 100)}%</div>
         <button type="button" className="btn ghost xs" onClick={zoomIn} title="Zoom in">+</button>
         <button type="button" className="btn ghost xs" onClick={resetZoom} title="Reset zoom">Reset</button>
@@ -219,7 +227,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
       </div>
 
       {/* Page viewport, single page at a time for lazy rendering */}
-      <div style={{ overflow: 'auto', padding: 12 }}>
+      <div className="pdf-page-viewport" style={{ overflow: 'auto', padding: '12px 8px' }}>
         <Document
         file={blobForPdf || undefined}
         onLoadSuccess={onDocumentLoadSuccess}

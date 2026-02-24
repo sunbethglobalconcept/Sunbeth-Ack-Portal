@@ -45,15 +45,15 @@ export const AppRoutes: React.FC = () => {
       <Route path="/onboard" element={<React.Suspense fallback={null}><ExternalEnabledGuard><Onboard /></ExternalEnabledGuard></React.Suspense>} />
       <Route path="/mfa" element={<React.Suspense fallback={null}><ExternalEnabledGuard><MFA /></ExternalEnabledGuard></React.Suspense>} />
       <Route path="/reset-password" element={<React.Suspense fallback={null}><ExternalEnabledGuard><ResetPassword /></ExternalEnabledGuard></React.Suspense>} />
-  <Route path="/about" element={<About />} />
-  <Route path="/modules" element={<RequireAuth><ModulesHub /></RequireAuth>} />
+      <Route path="/about" element={<About />} />
+      <Route path="/modules" element={<RequireAuth><ModulesHub /></RequireAuth>} />
       <Route path="/batch/:id" element={<RequireAuth><BatchDetail /></RequireAuth>} />
       <Route path="/batch/:id/completed" element={<RequireAuth><CompletedBatch /></RequireAuth>} />
       <Route path="/document/:id/*" element={<RequireAuth><DocumentReader /></RequireAuth>} />
       <Route path="/summary" element={<RequireAuth><Summary /></RequireAuth>} />
       <Route path="/admin" element={<AdminGuard><AdminPanel /></AdminGuard>} />
       <Route path="/admin/batch/:id/completions" element={<AdminGuard><BatchCompletions /></AdminGuard>} />
-  <Route path="/super-admin" element={<SuperAdminGuard><React.Suspense fallback={null}><SuperAdminConsole /></React.Suspense></SuperAdminGuard>} />
+      <Route path="/super-admin" element={<SuperAdminGuard><React.Suspense fallback={null}><SuperAdminConsole /></React.Suspense></SuperAdminGuard>} />
       <Route path="/logout" element={<Logout />} />
       <Route path="/verify/certificate/:id" element={<VerifyCertificate />} />
     </Routes>
