@@ -951,9 +951,11 @@ footer {
   border: var(--border);
   box-shadow: var(--shadow);
   font-family: var(--font);
-  padding: 18px 18px 20px;
+  padding: 12px 18px 16px;
   width: 100%;
   max-width: min(520px, 94vw);
+  max-height: 82vh;
+  overflow: hidden;
 }
 .swal2-sunbeth-title {
   color: var(--primary);
@@ -963,8 +965,27 @@ footer {
 .swal2-sunbeth-body {
   font-size: 14px;
   color: var(--muted-2);
+  max-height: calc(72vh - 190px);
+  overflow-y: auto;
+  padding: 4px 6px 16px 2px; /* add bottom padding so text doesn't sit under actions */
 }
 .swal2-sunbeth-actions { gap: 10px !important; }
+
+.swal2-sunbeth .swal2-actions,
+.swal2-sunbeth-actions {
+  position: static;
+  background: transparent;
+  padding-top: 6px;
+  margin-top: 12px;
+  justify-content: center;
+}
+
+@media(max-width:640px) {
+  .swal2-icon {
+    transform: scale(0.8);
+    margin-top: -4px;
+  }
+}
 
 /* Toast variant */
 .swal2-toast-sunbeth.swal2-popup {
