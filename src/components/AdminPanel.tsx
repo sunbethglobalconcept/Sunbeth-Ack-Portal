@@ -38,6 +38,12 @@ import TabNav, { type TabConfig } from './ui/TabNav';
 import PageHeader from './ui/PageHeader';
 import KPIStat from './ui/KPIStat';
 import UserGuideTour from './tours/UserGuideTour';
+
+const normalizeDocUrl = (value?: string | null) =>
+  (value || '').trim().toLowerCase().replace(/\/$/, '').replace(/\?.*$/, '');
+
+const canonicalDocKey = (doc: { url?: string | null; localUrl?: string | null }) =>
+  normalizeDocUrl(doc.localUrl || doc.url);
 import TabTourManager from './tours/TabTourManager';
 import DocumentLibraryManager from './admin/DocumentLibraryManager';
 
@@ -49,6 +55,7 @@ import DocumentLibraryManager from './admin/DocumentLibraryManager';
 
 // SharePointBrowser extracted to ./admin/SharePointBrowser
 import SharePointBrowser from './admin/SharePointBrowser';
+import { Link } from 'react-router-dom';
 
 // LocalLibraryPicker moved to ./admin/LocalLibraryPicker
 
@@ -63,6 +70,7 @@ const AdminPanel: React.FC = () => {
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [originalRecipientEmails, setOriginalRecipientEmails] = useState<Set<string>>(new Set());
   const [originalDocUrls, setOriginalDocUrls] = useState<Set<string>>(new Set());
+  const [completedRecipientEmails, setCompletedRecipientEmails] = useState<Set<string>>(new Set());
   const [apiHealth, setApiHealth] = useState<'unknown' | 'ok' | 'down'>('unknown');
   const pingApi = async () => {
     try {
@@ -224,10 +232,11 @@ const AdminPanel: React.FC = () => {
     const doc = batchForm.selectedDocuments[idx];
     setBatchForm(prev => ({ ...prev, selectedDocuments: prev.selectedDocuments.filter((_, i) => i !== idx) }));
     if (!editingBatchId || !doc) return;
-    const normalize = (u?: string | null) => (u || '').trim().toLowerCase().replace(/\/$/, '')
-      .replace(/\?.*$/, ''); // strip query for robust matching
+    const normalize = (u?: string | null) =>
+      (u || '').trim().toLowerCase().replace(/\/$/, '').replace(/\?.*$/, '');
     const targetCanonical = normalize(doc.url);
     const targetLocal = normalize(doc.localUrl || undefined);
+    const targetKey = canonicalDocKey(doc);
     const tryDeleteByIds = async (): Promise<boolean> => {
       try {
         const base = (getApiBase() as string);
@@ -254,8 +263,12 @@ const AdminPanel: React.FC = () => {
         });
         if (!del.ok) return false;
         // Update originals set if we know canonical
-        if (targetCanonical) {
-          setOriginalDocUrls(prev => { const p = new Set(prev); p.delete(targetCanonical); return p; });
+        if (targetKey) {
+          setOriginalDocUrls(prev => {
+            const p = new Set(prev);
+            p.delete(targetKey);
+            return p;
+          });
         }
         return true;
       } catch { return false; }
@@ -271,8 +284,12 @@ const AdminPanel: React.FC = () => {
           method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls })
         });
         if (!del.ok) return false;
-        if (targetCanonical) {
-          setOriginalDocUrls(prev => { const p = new Set(prev); p.delete(targetCanonical); return p; });
+        if (targetKey) {
+          setOriginalDocUrls(prev => {
+            const p = new Set(prev);
+            p.delete(targetKey);
+            return p;
+          });
         }
         return true;
       } catch { return false; }
@@ -525,13 +542,12 @@ const AdminPanel: React.FC = () => {
         description: batchForm.description
       });
 
-      // Determine which recipients should be notified (only new ones during edit)
-      let recipientsToNotify = recipients;
-      if (editingBatchId) {
-        const isNew = (addr: string) => !originalRecipientEmails.has((addr || '').trim().toLowerCase());
-        const filtered = recipients.filter(r => isNew(r.address));
-        recipientsToNotify = filtered;
-      }
+      // Determine recipients that should be notified (skip those already completed)
+      const recipientsToNotify = recipients.filter((r) => {
+        const emailLower = (r.address || '').trim().toLowerCase();
+        if (!emailLower) return false;
+        return !completedRecipientEmails.has(emailLower);
+      });
       // Note: email sending occurs later after successful persistence
       // Teams optional (requires Chat.ReadWrite)
       // if (batchForm.notifyByTeams) {
@@ -794,7 +810,37 @@ const AdminPanel: React.FC = () => {
         localFileId: d.localFileId || d.toba_localfileid || null,
         localUrl: d.localUrl || d.toba_localurl || null
       }));
-      const selectedUsers = (recs || []).map((r: any) => ({ id: r.email || r.user || r.userPrincipalName || r.id || r.email, displayName: r.displayName || r.email, userPrincipalName: r.email, department: r.department, jobTitle: r.jobTitle } as any));
+      let completedEmails = new Set<string>();
+      try {
+        const compRes = await fetch(`${base}/api/batches/${encodeURIComponent(id)}/completions`);
+        if (compRes.ok) {
+          const compJson = await compRes.json();
+          const completionList = Array.isArray(compJson) ? compJson : (Array.isArray(compJson?.rows) ? compJson.rows : []);
+          for (const row of completionList) {
+            const emailKey = String(row.email || row.user || row.userPrincipalName || '').trim().toLowerCase();
+            if (emailKey && row?.completed) {
+              completedEmails.add(emailKey);
+            }
+          }
+        }
+      } catch {
+        completedEmails = new Set();
+      }
+      setCompletedRecipientEmails(completedEmails);
+      const selectedUsers = (recs || [])
+        .filter((r: any) => {
+          const emailKey = String(r.email || r.user || r.userPrincipalName || '').trim().toLowerCase();
+          return !emailKey || !completedEmails.has(emailKey);
+        })
+        .map((r: any) => ({
+          id: r.email || r.user || r.userPrincipalName || r.id || r.email,
+          displayName: r.displayName || r.email,
+          userPrincipalName: r.email,
+          mail: r.email,
+          department: r.department,
+          jobTitle: r.jobTitle,
+          officeLocation: r.location,
+        } as any));
       const selectedGroups: GraphGroup[] = [];
       // Map user -> business
       const nextMap: Record<string, string | null> = {};
@@ -804,7 +850,18 @@ const AdminPanel: React.FC = () => {
       }
       // Track originals for diffing
       setOriginalRecipientEmails(new Set((recs || []).map((r: any) => String(r.email || r.user || '').trim().toLowerCase()).filter(Boolean)));
-      setOriginalDocUrls(new Set((docs || []).map((d: any) => String(d.url || d.webUrl || '').trim()).filter(Boolean)));
+      setOriginalDocUrls(
+        new Set(
+          (docs || [])
+            .map((d: any) =>
+              canonicalDocKey({
+                url: d.url || d.webUrl || d.toba_fileurl || d.toba_originalurl,
+                localUrl: d.localUrl || d.toba_localurl,
+              })
+            )
+            .filter(Boolean)
+        )
+      );
 
       setBatchForm({
         name: String(b.toba_name || b.name || ''),
@@ -888,6 +945,8 @@ const AdminPanel: React.FC = () => {
       setEditingBatchId(null); // new batch
       setOriginalRecipientEmails(new Set());
       setOriginalDocUrls(new Set());
+      setCompletedRecipientEmails(new Set());
+      setCompletedRecipientEmails(new Set());
       setActiveTab('batch');
   showToast('Prepared clone in editor', 'success');
     } catch (e) {
@@ -907,24 +966,26 @@ const AdminPanel: React.FC = () => {
           <UserGuideTour userRole="admin" />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <Link to="/">
           <button
             className="btn ghost xs"
-            onClick={() => {
-              try {
-                if (window.history && window.history.length > 1) {
-                  window.history.back();
-                } else {
-                  window.location.assign('/');
-                }
-              } catch {
-                window.location.assign('/');
-              }
-            }}
+            // onClick={() => {
+            //   try {
+            //     if (window.history && window.history.length > 1) {
+            //       window.history.back();
+            //     } else {
+            //       window.location.assign('/');
+            //     }
+            //   } catch {
+            //     window.location.assign('/');
+            //   }
+            // }}
             title="Exit Admin Panel"
             aria-label="Exit Admin Panel"
           >
             Exit Admin
           </button>
+          </Link>
         </div>
 
         {/* Tab Navigation */}

@@ -9,6 +9,7 @@ import Summary from './components/Summary';
 import CompletedBatch from './components/CompletedBatch';
 import AdminPanel from './components/AdminPanel';
 import BatchCompletions from './components/admin/BatchCompletions';
+import BatchDetailAdmin from './components/admin/BatchDetailAdmin';
 import Landing from './components/Landing';
 import About from './components/About';
 import { useAuth } from './context/AuthContext';
@@ -52,6 +53,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/document/:id/*" element={<RequireAuth><DocumentReader /></RequireAuth>} />
       <Route path="/summary" element={<RequireAuth><Summary /></RequireAuth>} />
       <Route path="/admin" element={<AdminGuard><AdminPanel /></AdminGuard>} />
+      <Route path="/admin/batch/:id" element={<AdminGuard><BatchDetailAdmin /></AdminGuard>} />
       <Route path="/admin/batch/:id/completions" element={<AdminGuard><BatchCompletions /></AdminGuard>} />
       <Route path="/super-admin" element={<SuperAdminGuard><React.Suspense fallback={null}><SuperAdminConsole /></React.Suspense></SuperAdminGuard>} />
       <Route path="/logout" element={<Logout />} />

@@ -8,7 +8,7 @@ import { useRBAC } from './context/RBACContext';
 import { useTenant } from './context/TenantContext';
 // import DevPanel from './components/DevPanel';
 import { info } from './diagnostics/logger';
-import { getBatches, getUserProgress } from './services/dbService';
+import { getBatches } from './services/dbService';
 import DancingLogoOverlay from './components/DancingLogoOverlay';
 import { getBrandLogoUrl } from './utils/runtimeConfig';
 import { enforceDuePolicies } from './utils/policiesDue';
@@ -100,39 +100,38 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           list = [];
         }
 
-        if (!Array.isArray(list) || list.length === 0) {
+        const batches = Array.isArray(list) ? list : [];
+        if (batches.length === 0) {
           setPending(0);
           setDueBy(null);
           return;
         }
 
-        // Fetch per-batch progress in parallel so the dashboard doesn't block on sequential calls.
-        const progressResults = await Promise.allSettled(
-          list.map((b) => getUserProgress(b.toba_batchid, token || undefined, undefined, email))
-        );
-
-        let pendingTotal = 0;
-        const incompletes: Array<{ due?: string | null }> = [];
-
-        progressResults.forEach((res, idx) => {
-          if (res.status !== 'fulfilled') return;
-          const p = res.value || {};
-          const total = p.total ?? 0;
-          const acked = p.acknowledged ?? 0;
-          const remain = Math.max(0, total - acked);
-          pendingTotal += remain;
-          if ((p.percent ?? 0) < 100) incompletes.push({ due: list[idx]?.toba_duedate });
+        const stats = batches.map((batch) => {
+          const totalDocs = Number(batch?.toba_totaldocs ?? 0);
+          const acknowledged = Number(batch?.toba_acknowledged ?? 0);
+          const remaining = Math.max(0, totalDocs - acknowledged);
+          const percent = totalDocs === 0 ? 0 : Math.min(100, Math.round((acknowledged / totalDocs) * 100));
+          return { batch, totalDocs, acknowledged, remaining, percent };
         });
 
+        const pendingTotal = stats.reduce((acc, stat) => acc + stat.remaining, 0);
         setPending(pendingTotal);
 
+        const incompletes = stats.filter((stat) => (stat.totalDocs === 0 ? true : stat.percent < 100));
         if (incompletes.length) {
-          const dates = incompletes.map((i) => i.due).filter(Boolean) as string[];
+          const dates = incompletes
+            .map((stat) => stat.batch?.toba_duedate)
+            .filter(Boolean) as string[];
           if (dates.length) {
-            const min = dates.reduce((a, d) => (new Date(d) < new Date(a) ? d! : a!));
+            const min = dates.reduce((a, d) => (new Date(d) < new Date(a) ? d : a));
             setDueBy(min);
-          } else setDueBy(null);
-        } else setDueBy(null);
+          } else {
+            setDueBy(null);
+          }
+        } else {
+          setDueBy(null);
+        }
       } catch {
         setPending(null);
         setDueBy(null);

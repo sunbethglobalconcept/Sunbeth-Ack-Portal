@@ -8,6 +8,7 @@ import { getApiBase, isSQLiteEnabled } from '../../utils/runtimeConfig';
 import { confirmDialog, showToast } from '../../utils/alerts';
 import { getDocumentsByBatch } from '../../services/dbService';
 import { generateUserCompletionPdf } from '../../services/notificationService';
+import { Link } from 'react-router-dom';
 
 type BatchRow = { toba_batchid: string; toba_name: string; toba_startdate?: string; toba_duedate?: string; toba_status?: string };
 
@@ -337,9 +338,9 @@ const ManageBatches: React.FC<{ canEdit: boolean; onEdit: (id: string) => void; 
                   <span className="badge" style={{ background: (b.toba_status || '1') === '1' ? '#d4edda' : '#e2e3e5', color: (b.toba_status || '1') === '1' ? '#155724' : '#383d41' }}>{(b.toba_status || '1') === '1' ? 'Active' : 'Inactive'}</span>
                   <div className="small muted" />
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} className="batch-actions">
-                    <a href={`/batch/${b.toba_batchid}`}><button className="btn ghost sm">View</button></a>
+                    <Link to={`/admin/batch/${b.toba_batchid}`}><button className="btn ghost sm">View</button></Link>
                     <button className="btn ghost sm" onClick={() => openRecipients(b.toba_batchid)}>Recipients</button>
-                    <button className="btn ghost sm" onClick={() => onEdit(b.toba_batchid)} disabled={!canEdit}>Edit</button>
+                    {/* <button className="btn ghost sm" onClick={() => onEdit(b.toba_batchid)} disabled={!canEdit}>Edit</button> */}
                     <button className="btn ghost sm" onClick={() => onClone(b.toba_batchid)} disabled={!canEdit}>Clone</button>
                     <button className="btn ghost sm" onClick={() => del(b.toba_batchid)} disabled={!canEdit || busy}>Delete</button>
                   </div>

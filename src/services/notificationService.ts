@@ -15,8 +15,8 @@ import { getGraphToken } from './authTokens';
 import { getBrandLogoUrl, getCertificateLogoUrl, getBrandName, getBrandPrimaryColor, getApiBase } from '../utils/runtimeConfig';
 import { buildUserCompletionCertificate } from './emailTemplates';
 
-type Recipient = { address: string; name?: string };
-type MailOptions = { cc?: Recipient[]; bcc?: Recipient[] };
+export type NotificationRecipient = { address: string; name?: string };
+type MailOptions = { cc?: NotificationRecipient[]; bcc?: NotificationRecipient[] };
 
 const chunk = <T,>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -30,7 +30,7 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
  */
 // eslint-disable-next-line complexity
 export const sendEmail = async (
-  recipients: Recipient[],
+  recipients: NotificationRecipient[],
   subject: string,
   htmlBody: string,
   attachments?: Array<{ name: string; contentBytes: string; contentType?: string }>,
@@ -88,7 +88,7 @@ export const sendEmail = async (
       message: {
         subject,
         body: { contentType: 'HTML', content: bodyWithInline },
-        toRecipients: part.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })),
+      toRecipients: part.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })),
         ccRecipients: (options?.cc && options.cc.length > 0) ? options.cc.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })) : undefined,
         bccRecipients: (options?.bcc && options.bcc.length > 0) ? options.bcc.map(r => ({ emailAddress: { address: r.address, name: r.name || r.address } })) : undefined,
         attachments: attachmentPayloads.length > 0 ? attachmentPayloads : undefined
@@ -118,7 +118,7 @@ export const sendEmail = async (
  */
 // eslint-disable-next-line complexity
 export const sendEmailWithAttachmentChunks = async (
-  recipients: Recipient[],
+  recipients: NotificationRecipient[],
   subject: string,
   htmlBody: string,
   attachments?: Array<{ name: string; contentBytes: string; contentType?: string }>,
@@ -128,7 +128,7 @@ export const sendEmailWithAttachmentChunks = async (
   const MAX_TOTAL_BYTES = 15 * 1024 * 1024; // ~15 MB per message (conservative)
 
   if (!attachments || attachments.length === 0) {
-    await sendEmail(recipients, subject, htmlBody, undefined, options);
+      await sendEmail(recipients, subject, htmlBody, undefined, options);
     return;
   }
 
