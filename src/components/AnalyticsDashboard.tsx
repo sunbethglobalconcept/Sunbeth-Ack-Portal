@@ -312,7 +312,6 @@ const AnalyticsDashboard: React.FC = () => {
     const local = 'http://127.0.0.1:4000';
     return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
   };
-  const getFirebaseRtdUrl = () => (process.env.REACT_APP_FIREBASE_RTD_URL || 'https://sunbeth-ack-portal-default-rtdb.firebaseio.com').replace(/\/$/, '');
   const tryFetchJson = async (path: string) => {
     const bases = getApiBases();
     let lastErr: any = null;
@@ -325,32 +324,11 @@ const AnalyticsDashboard: React.FC = () => {
     if (lastErr) throw lastErr;
     throw new Error('All API base candidates failed: ' + bases.join(', '));
   };
-  const fetchUserBusinesses = async () => {
-    try {
-      const url = `${getFirebaseRtdUrl()}/tables/user_businesses.json`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`user_businesses_fetch_failed_${r.status}`);
-      const json = await r.json();
-      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) {
-      console.warn('user_businesses_fetch_failed', e);
-      return [];
-    }
-  };
-  const fetchFirebaseBusinesses = async () => {
-    try {
-      const url = `${getFirebaseRtdUrl()}/tables/businesses.json`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`businesses_fetch_failed_${r.status}`);
-      const json = await r.json();
-      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) {
-      console.warn('firebase_businesses_fetch_failed', e);
-      return [];
-    }
-  };
+  type UserBusiness = { email?: string; businessId?: string | number | null; business_id?: string | number | null };
+
+  // Avoid direct RTDB hits: rely on backend APIs instead
+  const fetchUserBusinesses = async (): Promise<UserBusiness[]> => [] as UserBusiness[];
+  const fetchFirebaseBusinesses = async (): Promise<any[]> => [] as any[];
   // Simple search & pagination states
   const [compSearch, setCompSearch] = useState('');
   const [compPage, setCompPage] = useState(1);
@@ -459,7 +437,8 @@ const AnalyticsDashboard: React.FC = () => {
 
           // user -> business mapping from firebase selection during acknowledgement
           const userBizMap = new Map<string, string>();
-          for (const ub of Array.isArray(userBizRes) ? userBizRes : []) {
+          const userBizArr = (Array.isArray(userBizRes) ? userBizRes : []) as UserBusiness[];
+          for (const ub of userBizArr) {
             const email = String(ub.email || '').trim().toLowerCase();
             const bid = String(ub.businessId || ub.business_id || '').trim();
             if (email && bid) userBizMap.set(email, bid);

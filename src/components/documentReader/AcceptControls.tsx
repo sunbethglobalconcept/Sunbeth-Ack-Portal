@@ -76,7 +76,7 @@ const BusinessSelector: React.FC<{
       onChange={e => onBusinessChange && onBusinessChange(e.target.value)}
     >
       <option value="" disabled>
-        {(businesses || []).length === 0 ? 'No businesses available' : 'Select your business'}
+        {(businesses || []).length === 0 ? 'No businesses available' : 'Select your subsidiary'}
       </option>
       {(businesses || []).map(b => (
         <option key={String(b.id)} value={String(b.id)}>{b.name}</option>

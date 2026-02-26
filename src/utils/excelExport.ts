@@ -7,6 +7,8 @@ type ExportOpts = { year?: number | string, adminEmail?: string };
  * Export a single, management-ready acknowledgement sheet (business + user + batch + document).
  */
 export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
+  type UserBusiness = { email?: string; businessId?: string | number | null; business_id?: string | number | null };
+
   const getApiBases = () => {
     const envBase = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
     const hinted = (typeof window !== 'undefined' && ((window as any).__API_BASE__ || (window as any).API_BASE))
@@ -27,33 +29,17 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     if (lastErr) throw lastErr;
     throw new Error('All API base candidates failed: ' + bases.join(', '));
   };
-  const getFirebaseRtdUrl = () => (process.env.REACT_APP_FIREBASE_RTD_URL || 'https://sunbeth-ack-portal-default-rtdb.firebaseio.com').replace(/\/$/, '');
   const fetchFirebaseBusinesses = async () => {
     try {
-      const url = `${getFirebaseRtdUrl()}/tables/businesses.json`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`firebase_businesses_fetch_failed_${r.status}`);
-      const json = await r.json();
-      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-      return Array.isArray(arr) ? arr : [];
+      const res = await tryFetchJson('/api/businesses');
+      return Array.isArray(res) ? res : [];
     } catch (e) {
-      console.warn('firebase_businesses_fetch_failed', e);
+      console.warn('businesses_fetch_failed', e);
       return [];
     }
   };
-  const fetchUserBusinesses = async () => {
-    try {
-      const url = `${getFirebaseRtdUrl()}/tables/user_businesses.json`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`user_businesses_fetch_failed_${r.status}`);
-      const json = await r.json();
-      const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) {
-      console.warn('user_businesses_fetch_failed', e);
-      return [];
-    }
-  };
+  // Avoid direct RTDB hits for user_businesses; enrich with recipients/ack data instead
+  const fetchUserBusinesses = async (): Promise<UserBusiness[]> => [] as UserBusiness[];
   const fetchBatches = async () => {
     try {
       const res = await tryFetchJson('/api/batches');
@@ -64,9 +50,12 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     }
   };
   const fetchConsents = async () => {
-    // Prefer admin export; fallback to RTDB if not accessible
+    // Prefer admin export; include adminEmail if provided to satisfy admin guards
     try {
-      const res = await tryFetchJson('/api/admin/consents/export?limit=5000');
+      const qs = new URLSearchParams();
+      qs.set('limit', '5000');
+      if (opts.adminEmail) qs.set('adminEmail', String(opts.adminEmail));
+      const res = await tryFetchJson(`/api/admin/consents/export?${qs.toString()}`);
       const items = Array.isArray((res as any)?.items)
         ? (res as any).items
         : Array.isArray((res as any)?.consents)
@@ -78,17 +67,7 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     } catch (e) {
       console.warn('consents_export_api_failed', e);
     }
-    try {
-      const url = `${getFirebaseRtdUrl()}/tables/consents.json`;
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`rtdb_consents_fetch_failed_${r.status}`);
-      const json = await r.json();
-      const items = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-      return items;
-    } catch (e2) {
-      console.warn('consents_export_fallback_failed', e2);
-      return [];
-    }
+    return [];
   };
   const year = String((opts.year ?? new Date().getFullYear()));
   const adminEmail = String(opts.adminEmail || '').trim().toLowerCase(); // kept for potential auth headers
@@ -123,7 +102,8 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     ])
   );
   const userBizMap = new Map<string, string>();
-  for (const ub of Array.isArray(userBusinesses) ? userBusinesses : []) {
+  const userBizArr = (Array.isArray(userBusinesses) ? userBusinesses : []) as UserBusiness[];
+  for (const ub of userBizArr) {
     const email = String(ub.email || '').trim().toLowerCase();
     const bid = String(ub.businessId || ub.business_id || '').trim();
     if (email && bid) userBizMap.set(email, bid);
@@ -199,7 +179,11 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
         receiptId: String(receiptId),
       };
     });
-    const wsCons = XLSX.utils.json_to_sheet(normCons);
+    const wsCons = XLSX.utils.json_to_sheet(
+      normCons.length > 0
+        ? normCons
+        : [{ note: 'No consents returned. Ensure /api/admin/consents/export is accessible and contains data.' }]
+    );
     XLSX.utils.book_append_sheet(wb, wsCons, 'Consents');
   } catch (e) {
     console.warn('Consents export failed or unavailable', e);

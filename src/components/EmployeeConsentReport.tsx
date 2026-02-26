@@ -15,6 +15,8 @@ interface ConsentRow {
   year?: string;
 }
 
+type UserBusiness = { email?: string; businessId?: string | number | null; business_id?: string | number | null };
+
 const getApiBases = () => {
   const envBase = (process.env.REACT_APP_API_BASE || '').replace(/\/$/, '');
   const hinted =
@@ -25,36 +27,18 @@ const getApiBases = () => {
   return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
 };
 
-const getFirebaseRtdUrl = () =>
-  (process.env.REACT_APP_FIREBASE_RTD_URL || 'https://sunbeth-ack-portal-default-rtdb.firebaseio.com').replace(/\/$/, '');
-
 const fetchFirebaseBusinesses = async () => {
   try {
-    const url = `${getFirebaseRtdUrl()}/tables/businesses.json`;
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`firebase_businesses_fetch_failed_${r.status}`);
-    const json = await r.json();
-    const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-    return Array.isArray(arr) ? arr : [];
+    const res = await tryFetchJson('/api/businesses');
+    return Array.isArray(res) ? res : [];
   } catch (e) {
-    console.warn('firebase_businesses_fetch_failed', e);
+    console.warn('businesses_fetch_failed', e);
     return [];
   }
 };
 
-const fetchUserBusinesses = async () => {
-  try {
-    const url = `${getFirebaseRtdUrl()}/tables/user_businesses.json`;
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`user_businesses_fetch_failed_${r.status}`);
-    const json = await r.json();
-    const arr = Array.isArray(json) ? json : (json && typeof json === 'object' ? Object.values(json) : []);
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) {
-    console.warn('user_businesses_fetch_failed', e);
-    return [];
-  }
-};
+// Avoid direct RTDB lookups; if needed, this can be swapped to a backend endpoint.
+const fetchUserBusinesses = async (): Promise<UserBusiness[]> => [] as UserBusiness[];
 
 const tryFetchJson = async (path: string) => {
   const bases = getApiBases();
@@ -164,7 +148,8 @@ const enrichRows = async (rows: ConsentRow[]): Promise<ConsentRow[]> => {
   ]);
 
   const userBizMap = new Map<string, string>();
-  for (const ub of Array.isArray(userBiz) ? userBiz : []) {
+  const userBizArr = (Array.isArray(userBiz) ? userBiz : []) as UserBusiness[];
+  for (const ub of userBizArr) {
     const email = String(ub.email || '').trim().toLowerCase();
     const bid = String(ub.businessId || ub.business_id || '').trim();
     if (email && bid) userBizMap.set(email, bid);
@@ -257,41 +242,9 @@ export default function EmployeeConsentReport() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchFirebaseConsents = useCallback(async (): Promise<{ rows: ConsentRow[]; total: number }> => {
-    try {
-      const base = getFirebaseRtdUrl();
-      const url = `${base}/tables/consents.json`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`firebase_fetch_failed_${res.status}`);
-      const json = await res.json();
-      if (!json) return { rows: [], total: 0 };
-      const arr: any[] = Array.isArray(json)
-        ? json
-        : typeof json === 'object'
-          ? Object.values(json)
-          : [];
-      const normalized = arr
-        .map((r: any) => ({
-          email: r.email || r.user || '',
-          batchId: r.batchId || r.batch_id || '',
-          consentedAt: r.consentedAt || r.consented_at || r.createdAt || r.created_at || '',
-          receiptId: r.receiptId || r.receipt_id || r.id || '',
-          version: r.version ?? r.legalVersion ?? r.legal_version ?? null,
-          businessId: r.businessId ?? r.business_id ?? null,
-        }))
-        .filter((r) => {
-          if (!emailFilter.trim()) return true;
-          return (r.email || '').toLowerCase().includes(emailFilter.trim().toLowerCase());
-        });
-      // Sort newest first and apply local pagination
-      normalized.sort((a, b) => String(b.consentedAt || '').localeCompare(String(a.consentedAt || '')));
-      const start = (page - 1) * pageSize;
-      const paged = normalized.slice(start, start + pageSize);
-      return { rows: paged, total: normalized.length };
-    } catch (e) {
-      setError((e as any)?.message || 'Failed to load consents');
-      return { rows: [], total: 0 };
-    }
-  }, [emailFilter, page, pageSize]);
+    // RTDB fallback disabled to avoid extra reads
+    return { rows: [], total: 0 };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
