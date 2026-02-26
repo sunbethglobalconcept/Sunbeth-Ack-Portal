@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import AdminPanel from '../components/AdminPanel';
 import { AuthContext } from '../context/AuthContext';
 import { RBACContext } from '../context/RBACContext';
+import { MemoryRouter } from 'react-router-dom';
 
 // Mock feature flags to avoid network calls in provider
 jest.mock('../context/FeatureFlagsContext', () => ({
@@ -60,11 +61,13 @@ const renderAdmin = () => {
   } as any;
 
   return render(
-    <AuthContext.Provider value={auth}>
-      <RBACContext.Provider value={rbac}>
-        <AdminPanel />
-      </RBACContext.Provider>
-    </AuthContext.Provider>
+    <MemoryRouter initialEntries={['/']}>
+      <AuthContext.Provider value={auth}>
+        <RBACContext.Provider value={rbac}>
+          <AdminPanel />
+        </RBACContext.Provider>
+      </AuthContext.Provider>
+    </MemoryRouter>
   );
 };
 

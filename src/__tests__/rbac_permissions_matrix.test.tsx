@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import AdminPanel from '../components/AdminPanel';
 import { AuthContext } from '../context/AuthContext';
 import { RBACContext } from '../context/RBACContext';
+import { MemoryRouter } from 'react-router-dom';
 
 // Keep external flags and tenants quiet in tests
 jest.mock('../context/FeatureFlagsContext', () => ({
@@ -38,11 +39,13 @@ const auth = {
 
 const renderWithRBAC = (rbac: any) => {
   return render(
+    <MemoryRouter initialEntries={['/']}>
     <AuthContext.Provider value={auth}>
       <RBACContext.Provider value={rbac}>
         <AdminPanel />
       </RBACContext.Provider>
     </AuthContext.Provider>
+    </MemoryRouter>
   );
 };
 
