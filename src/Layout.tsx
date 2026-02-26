@@ -252,7 +252,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           })()}
           <div>
             <div className="h1" style={{ color: '#fff' }}>
-              Sunbeth Document Acknowledgement
+              {process.env.REACT_APP_BRAND_NAME ? ` ${process.env.REACT_APP_BRAND_NAME}` : ''}
             </div>
             <div className="small" style={{ color: '#fff', opacity: 0.9 }}>
               Employee Acknowledgment Portal
@@ -433,13 +433,14 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
         ) : (
           <div className={`${headerActionsClass} guest`}>
             <AppWelcomeTour />
-            <a
+            {/* <a
               href="/about"
               className="small"
               style={{ color: '#fff', textDecoration: 'none', opacity: 0.95 }}
             >
               About
-            </a>
+            </a> */}
+            <Link to="/about"><button className="btn ghost sm" type="button">About</button></Link>
             <button
               className="btn ghost sm"
               aria-label="Toggle theme"
@@ -472,6 +473,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
 
       <div className={`wrap ${!account ? 'landing-centered' : ''} ${!showAside ? 'centered' : ''}`}>
         <div className="grid">
+
           <main>{children}</main>
           {showAside && (
             <aside>
@@ -502,7 +504,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
                 <div style={{ height: 12 }} />
                 <div className="muted small">Due by: {dueBy || '—'}</div>
                 <div style={{ height: 6 }} />
-                <div className="muted small">Assigned to: All staff</div>
+                {/* <div className="muted small">Assigned to: All staff</div> */}
               </div>
             </aside>
           )}
