@@ -67,11 +67,10 @@ export async function requestConsentIfNeeded(userEmail?: string | null, batchId?
     <div style="text-align:left">
       <p>By clicking “I Agree”, I hereby acknowledge and confirm that:</p>
       <ul style="margin-left:1em">
-        <li>I have read and understood the content of the document presented to me;</li>
-        <li>I am signing/acknowledging this document voluntarily and without coercion;</li>
-        <li>The information I have provided (if any) is true and accurate to the best of my knowledge;</li>
+        <li>I will read and attest to the subsequent documents voluntarily and without coercion;</li>
+        <li>The information I will provide (if any) is true and accurate to the best of my knowledge;</li>
         <li>My electronic acknowledgement/signature has the same legal effect as a handwritten signature, to the fullest extent permitted by applicable law; and</li>
-        <li>I consent to the electronic delivery, execution, and storage of this document by Sunbeth.</li>
+        <li>I consent to the electronic delivery, execution, and storage of the subsequent documents by Sunbeth.</li>
       </ul>
       ${previewUrl ? '<p style="margin:8px 0">You can preview the official PDF inside the app before agreeing.</p>' : ''}
       <p>I understand that this acknowledgement is binding and enforceable.</p>
