@@ -10,6 +10,8 @@ import { useRBAC } from '../context/RBACContext';
 import { getBatches, getUserProgress } from '../services/dbService';
 import type { Batch } from '../types/models';
 import { fetchDuePolicies } from '../utils/policiesDue';
+import { alertWarning } from '../utils/alerts';
+import { hasDueDatePassed, formatDueDate } from '../utils/dueDate';
 
 const Dashboard: React.FC = () => {
   const { token, account } = useAuth();
@@ -82,11 +84,6 @@ const Dashboard: React.FC = () => {
     };
   }, [token]);
 
-  const formatDate = (d?: string) => {
-    if (!d) return '—';
-    try { return new Date(d).toLocaleDateString(); } catch { return d; }
-  };
-
   // Be defensive in case a test or edge case provides a non-array value
   const batchList = Array.isArray(batches) ? batches : ([] as Batch[]);
   const incompleteCount = useMemo(() => batchList.filter(b => (progressMap[b.toba_batchid]?.percent ?? 0) < 100).length, [batchList, progressMap]);
@@ -112,7 +109,7 @@ const Dashboard: React.FC = () => {
             <div className="muted" style={{ marginTop: 6 }}>You have <strong>{incompleteCount}</strong> pending items</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div className="muted small">Due by: <strong style={{ color: 'var(--accent)' }}>{earliestDue ? formatDate(earliestDue) : '—'}</strong></div>
+            <div className="muted small">Due by: <strong style={{ color: 'var(--accent)' }}>{earliestDue ? formatDueDate(earliestDue) : '—'}</strong></div>
             {rbac.canEditAdmin && (
               <div style={{ marginTop: 8 }}>
                 <Link to="/admin"><button className="btn ghost sm">Admin</button></Link>
@@ -138,7 +135,7 @@ const Dashboard: React.FC = () => {
               <div key={b.toba_batchid} className="batch-tile">
                 <div>
                   <div style={{ fontWeight: 700 }}>{b.toba_name}</div>
-                  <div className="muted" style={{ marginTop: 6 }}>Mandatory for all staff • Due: {formatDate(b.toba_duedate)}</div>
+                  <div className="muted" style={{ marginTop: 6 }}>Mandatory for all staff • Due: {formatDueDate(b.toba_duedate)}</div>
                   <div style={{ marginTop: 8 }}>
                     <div className="progressBar" aria-hidden="true"><i style={{ width: `${progressMap[b.toba_batchid]?.percent || 0}%` }} /></div>
                     <div className="muted small" style={{ marginTop: 6 }}>{progressMap[b.toba_batchid]?.percent || 0}% acknowledged</div>
@@ -157,14 +154,33 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div>{(progressMap[b.toba_batchid]?.percent || 0) === 100 ? <span className="badge done">Completed</span> : <span className="badge progress">In Progress</span>}</div>
-                  <div style={{ marginTop: 10 }}>
-                    { (progressMap[b.toba_batchid]?.percent || 0) === 100 ? (
-                      <Link to={`/batch/${b.toba_batchid}/completed`}><button className="btn ghost sm">View</button></Link>
-                    ) : (
-                      <Link to={`/batch/${b.toba_batchid}`}><button className="btn ghost sm">Continue</button></Link>
-                    )}
+                    <div style={{ marginTop: 10 }}>
+                      { (progressMap[b.toba_batchid]?.percent || 0) === 100 ? (
+                        <Link to={`/batch/${b.toba_batchid}/completed`}><button className="btn ghost sm">View</button></Link>
+                      ) : (
+                        (() => {
+                          const duePassed = hasDueDatePassed(b.toba_duedate);
+                          const onContinueClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+                            if (!duePassed) return;
+                            event.preventDefault();
+                            const dueLabel = formatDueDate(b.toba_duedate);
+                            void alertWarning(
+                              'Acknowledgement Closed',
+                              `<div style="text-align:left">
+                                <p>The acknowledgement for <strong>${b.toba_name}</strong> was due on <strong>${dueLabel}</strong>.</p>
+                                <p>The due date has passed; please contact the Human Resources team for additional guidance.</p>
+                              </div>`
+                            );
+                          };
+                          return (
+                            <Link to={`/batch/${b.toba_batchid}`} onClick={onContinueClick}>
+                              <button className="btn ghost sm">Continue</button>
+                            </Link>
+                          );
+                        })()
+                      )}
+                    </div>
                   </div>
-                </div>
               </div>
             ))}
           </div>

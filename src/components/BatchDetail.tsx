@@ -9,9 +9,11 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useExternalAuth } from '../context/ExternalAuthContext';
-import { getDocumentsByBatch, getAcknowledgedDocIds, getUserProgress } from '../services/dbService';
+import { getDocumentsByBatch, getAcknowledgedDocIds, getUserProgress, getBatchById } from '../services/dbService';
 import type { Doc } from '../types/models';
 import { requestConsentIfNeeded } from '../utils/legalConsent';
+import { alertWarning } from '../utils/alerts';
+import { hasDueDatePassed, formatDueDate } from '../utils/dueDate';
 
 const BatchDetail: React.FC = () => {
   const { id } = useParams();
@@ -26,8 +28,28 @@ const BatchDetail: React.FC = () => {
 
   // Gate entry with legal consent (skip if batch is already completed)
   useEffect(() => {
+    let active = true;
     (async () => {
       if (!id) { setConsentReady(true); return; }
+      try {
+        const batch = await getBatchById(id);
+        const dueDate = (batch?.toba_duedate || batch?.dueDate) ?? null;
+        if (hasDueDatePassed(dueDate)) {
+          if (!active) return;
+          const dueLabel = formatDueDate(dueDate);
+          await alertWarning(
+            'Acknowledgement Closed',
+            `<div style="text-align:left">
+                <p>The acknowledgement for <strong>${batch?.toba_name ?? 'this batch'}</strong> was due on <strong>${dueLabel}</strong>.</p>
+                <p>The due date has passed; please contact the Human Resources team for additional guidance.</p>
+              </div>`
+          );
+          if (!active) return;
+          navigate('/');
+          return;
+        }
+      } catch { /* ignore due-date lookup failures */ }
+
       try {
         // If completed, skip consent requirement
         const p = await getUserProgress(id, token ?? undefined, undefined, (account?.username || externalUser?.email || undefined));
@@ -51,12 +73,13 @@ const BatchDetail: React.FC = () => {
               return;
             }
           }
-  } catch { /* ignore */ }
+        } catch { /* ignore */ }
       } catch {
         // If consent flow fails unexpectedly, be safe and return to dashboard
         navigate('/');
       }
     })();
+    return () => { active = false; };
   }, [id, token, account?.username, externalUser?.email, navigate]);
 
   useEffect(() => {

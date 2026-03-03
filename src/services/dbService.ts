@@ -12,6 +12,7 @@
  * Add new data operations here so the rest of the app stays environment-agnostic.
  */
 import { apiGet, apiPost, apiPut, apiDelete } from './api';
+import type { Batch } from '../types/models';
 
 /**
  * Fetch the list of batches assigned to the user.
@@ -21,6 +22,10 @@ export const getBatches = async (_token?: string, userEmail?: string) => {
   const email = userEmail ? String(userEmail).trim().toLowerCase() : undefined;
   const q = email ? `?email=${encodeURIComponent(email)}` : '';
   try { return await apiGet(`/api/batches${q}`); } catch { return [] as any[]; }
+};
+
+export const getBatchById = async (batchId: string): Promise<Batch | null> => {
+  try { return await apiGet(`/api/batches/${encodeURIComponent(batchId)}`); } catch { return null; }
 };
 
 /**

@@ -1,4 +1,4 @@
-export type Batch = { toba_batchid: string; toba_name: string; toba_startdate?: string; toba_duedate?: string; toba_status?: string; };
+export type Batch = { toba_batchid: string; toba_name: string; toba_startdate?: string; toba_duedate?: string; toba_status?: string; dueDate?: string; };
 export type Doc = { toba_documentid: string; toba_title: string; toba_version?: string; toba_requiressignature?: boolean; toba_fileurl?: string; toba_driveid?: string | null; toba_itemid?: string | null; toba_source?: 'sharepoint' | 'url' | null };
 
 export type Business = {
