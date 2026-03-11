@@ -51,7 +51,11 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     } catch {
       /* fall through */
     }
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 900px)').matches
+    ) {
       return false;
     }
     return true;
