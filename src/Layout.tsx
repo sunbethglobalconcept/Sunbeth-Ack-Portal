@@ -46,10 +46,15 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
   });
   const [stickyHeader, setStickyHeader] = useState<boolean>(() => {
     try {
-      return (localStorage.getItem('sunbeth_sticky_header') || 'true') === 'true';
+      const stored = localStorage.getItem('sunbeth_sticky_header');
+      if (stored === 'true' || stored === 'false') return stored === 'true';
     } catch {
-      return true;
+      /* fall through */
     }
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches) {
+      return false;
+    }
+    return true;
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {

@@ -10,17 +10,12 @@
   --card: #ffffff;
   --muted: #6b6b6b;
   --muted-2: #8a8a8a;
-  --text: #111;
-  --text-muted: #6b6b6b;
-  --divider-color: #e8eaea;
-  --surface-muted: #eaeaea;
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 6px 22px rgba(12, 83, 67, 0.08);
   --shadow-hover: 0 10px 24px rgba(12,83,67,.12);
   --font: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial;
-  --border-color: #f0f0f0;
-  --border: 1px solid var(--border-color);
+  --border: 1px solid #f0f0f0;
 }
 
 /* Dark theme tokens */
@@ -31,13 +26,9 @@
   --card: #182520;        /* slightly lighter */
   --muted: #a5b2ad;
   --muted-2: #8ea39b;
-  --text: #e6eeeb;
-  --text-muted: #a5b2ad;
-  --divider-color: rgba(255,255,255,0.08);
-  --surface-muted: #2a3a33;
   --shadow: 0 8px 24px rgba(0,0,0,0.35);
   --shadow-hover: 0 12px 28px rgba(0,0,0,0.45);
-  --border-color: rgba(255,255,255,0.08);
+  --border: 1px solid rgba(255,255,255,0.08);
 }
 
 * {
@@ -48,8 +39,10 @@ body {
   margin: 0;
   font-family: var(--font);
   background: var(--bg);
-  color: var(--text);
+  color: #111
 }
+/* Dark theme text color */
+:root[data-theme='dark'] body { color: #e6eeeb; }
 
 header,
 .app-header {
@@ -130,14 +123,20 @@ header.sticky,
 
 .about-divider {
   height: 1px;
-  background: var(--divider-color);
+  background: #e8eaea;
   margin: 14px 0;
   border-radius: 999px;
+}
+:root[data-theme='dark'] .about-divider {
+  background: rgba(255,255,255,0.08);
 }
 
 .about-body {
   line-height: 1.6;
-  color: var(--text);
+  color: #24323a;
+}
+:root[data-theme='dark'] .about-body {
+  color: #e5efeb;
 }
 
 .about-body p {
@@ -145,7 +144,10 @@ header.sticky,
 }
 
 .about-features {
-  color: var(--muted-2);
+  color: #36454f;
+}
+:root[data-theme='dark'] .about-features {
+  color: #e8f2ee;
 }
 
 .about-actions {
@@ -340,7 +342,7 @@ header .btn.ghost:hover,
 }
 
 .dr-actions-divider {
-  color: var(--muted-2);
+  color: #bbb;
 }
 
 .dr-viewer {
@@ -785,20 +787,20 @@ header .btn.ghost:hover,
 }
 
 .badge.not {
-  background: var(--card);
-  color: var(--muted);
-  border: var(--border);
+  background: #fff;
+  color: #666;
+  border: 1px solid #eee
 }
 
 .badge.progress {
-  background: var(--accent-soft);
+  background: #fff7ef;
   color: var(--accent);
-  border: 1px solid rgba(246, 69, 0, 0.25);
+  border: 1px solid #fee6da
 }
 
 .badge.done {
   background: var(--primary);
-  color: #fff;
+  color: #fff
 }
 
 .batch-tile {
@@ -891,10 +893,10 @@ header .btn.ghost:hover,
 
 .progressBar {
   height: 10px;
-  background: var(--surface-muted);
+  background: #eaeaea;
   border-radius: 999px;
   overflow: hidden;
-  margin-top: 10px;
+  margin-top: 10px
 }
 
 .progressBar>i {
@@ -920,9 +922,9 @@ header .btn.ghost:hover,
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: var(--border);
-  background: var(--card);
-  color: var(--text);
+  border: 1px solid #eee;
+  background: #fff;
+  color: #333;
 }
 
 .chip.ok {
@@ -940,8 +942,8 @@ header .btn.ghost:hover,
 footer {
   margin: 20px 0;
   text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
+  color: #888;
+  font-size: 13px
 }
 
 /* Push footer to the bottom within wrap */
@@ -955,25 +957,25 @@ footer {
 }
 
 .upload-box {
-  border: 1px dashed var(--divider-color);
+  border: 1px dashed #e8e8e8;
   border-radius: 8px;
   padding: 12px;
-  background: var(--bg-elevated);
+  background: #fff;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 12px
 }
 
 .sig-pad {
-  border: 1px solid var(--border-color);
+  border: 1px solid #eee;
   border-radius: 8px;
-  background: var(--bg-elevated);
-  padding: 6px;
+  background: #fff;
+  padding: 6px
 }
 
 .sig-canvas {
   border-radius: 8px;
-  background: var(--bg);
+  background: #f9f9f9
 }
 
 .toast {

@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import Modal from '../Modal';
+import { UserGroupSelector } from './UserGroupSelector';
+import { GraphUser, GraphGroup, getGroupMembers } from '../../services/graphUserService';
+import { getGraphToken } from '../../services/authTokens';
 import { getApiBase, isSQLiteEnabled } from '../../utils/runtimeConfig';
 import { showToast } from '../../utils/alerts';
 import { useRBAC } from '../../context/RBACContext';
@@ -16,6 +20,20 @@ type CompletionRow = {
   total?: number;
   completed?: boolean;
   completionAt?: string | null;
+};
+
+type InviteSelection = {
+  users: GraphUser[];
+  groups: GraphGroup[];
+};
+
+type RecipientPayload = {
+  email: string;
+  displayName?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
+  location?: string | null;
+  primaryGroup?: string | null;
 };
 
 const BatchDetailAdmin: React.FC = () => {
@@ -38,6 +56,11 @@ const BatchDetailAdmin: React.FC = () => {
   const [rowsError, setRowsError] = useState<string | null>(null);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+  const [recipientsRefreshKey, setRecipientsRefreshKey] = useState(0);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteSelection, setInviteSelection] = useState<InviteSelection>({ users: [], groups: [] });
+  const [inviteSelectorKey, setInviteSelectorKey] = useState(0);
+  const [addingRecipients, setAddingRecipients] = useState(false);
 
   useEffect(() => {
     if (!sqliteReady || !id) return;
@@ -77,7 +100,7 @@ const BatchDetailAdmin: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [apiBase, id, sqliteReady]);
+  }, [apiBase, id, sqliteReady, recipientsRefreshKey]);
 
   useEffect(() => {
     if (!batch) {
@@ -114,7 +137,7 @@ const BatchDetailAdmin: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [apiBase, id, sqliteReady]);
+  }, [apiBase, id, sqliteReady, recipientsRefreshKey]);
 
   const incompleteRows = useMemo(
     () => rows.filter((r) => !r.completed),
@@ -219,6 +242,206 @@ const BatchDetailAdmin: React.FC = () => {
     }
   };
 
+  const notifyNewRecipients = async (list: RecipientPayload[]): Promise<number> => {
+    if (!batch || !id) return 0;
+    const recipients = list
+      .map((row): NotificationRecipient | null => {
+        const email = (row.email || '').trim();
+        if (!email) return null;
+        return { address: email, name: row.displayName || undefined };
+      })
+      .filter((entry): entry is NotificationRecipient => entry !== null);
+    if (recipients.length === 0) return 0;
+
+    const portalUrl = `${window.location.origin}/batch/${id}`;
+    const { subject, bodyHtml } = buildBatchEmail({
+      appUrl: portalUrl,
+      batchName,
+      startDate: batch?.toba_startdate || batch?.startDate || undefined,
+      dueDate: dueDateInput || batch?.toba_duedate || batch?.dueDate || undefined,
+      description: batchDescription || undefined,
+    });
+    await sendEmail(recipients, subject, bodyHtml);
+    return recipients.length;
+  };
+
+  const resetInviteSelection = () => {
+    setInviteSelection({ users: [], groups: [] });
+    setInviteSelectorKey((prev) => prev + 1);
+  };
+  const handleInviteModalOpen = () => {
+    resetInviteSelection();
+    setInviteModalOpen(true);
+  };
+  const handleInviteModalClose = () => {
+    setInviteModalOpen(false);
+    resetInviteSelection();
+  };
+  const handleInviteMoreRecipients = async () => {
+    if (!id || !sqliteReady) return;
+    if (!canEditBatch) {
+      showToast('Edit permission required to add recipients.', 'warning');
+      return;
+    }
+    if (inviteSelection.users.length === 0 && inviteSelection.groups.length === 0) {
+      showToast('Select at least one user or group before inviting.', 'info');
+      return;
+    }
+    setAddingRecipients(true);
+    try {
+      const recipientsMap = new Map<string, RecipientPayload>();
+      const addRecipient = (
+        rawEmail?: string | null,
+        name?: string | null,
+        extras?: Omit<RecipientPayload, 'email'>
+      ) => {
+        const email = String(rawEmail || '').trim();
+        if (!email || !email.includes('@')) return;
+        const key = email.toLowerCase();
+        if (recipientsMap.has(key)) return;
+        recipientsMap.set(key, {
+          email,
+          displayName: name || undefined,
+          department: extras?.department || undefined,
+          jobTitle: extras?.jobTitle || undefined,
+          location: extras?.location || undefined,
+          primaryGroup: extras?.primaryGroup || undefined,
+        });
+      };
+
+      inviteSelection.users.forEach((user) => {
+        addRecipient(user.mail || user.userPrincipalName, user.displayName, {
+          department: user.department || undefined,
+          jobTitle: user.jobTitle || undefined,
+          location: user.officeLocation || undefined,
+        });
+      });
+
+      if (inviteSelection.groups.length > 0) {
+        let token: string;
+        try {
+          token = await getGraphToken(['Group.Read.All', 'User.Read']);
+        } catch {
+          showToast('Graph permissions required to resolve group members.', 'warning');
+          return;
+        }
+        await Promise.all(
+          inviteSelection.groups.map(async (group) => {
+            try {
+              const members = await getGroupMembers(token, group.id);
+              members.forEach((member) => {
+                addRecipient(member.mail || member.userPrincipalName, member.displayName, {
+                  department: member.department || undefined,
+                  jobTitle: member.jobTitle || undefined,
+                  location: member.officeLocation || undefined,
+                  primaryGroup: group.displayName || undefined,
+                });
+              });
+            } catch {
+              showToast(
+                `Failed to load members for ${group.displayName || group.id}.`,
+                'warning'
+              );
+            }
+          })
+        );
+      }
+
+      const payload = Array.from(recipientsMap.values());
+      if (payload.length === 0) {
+        showToast('No valid email addresses were selected.', 'warning');
+        return;
+      }
+
+      const res = await fetch(
+        `${apiBase}/api/batches/${encodeURIComponent(id)}/recipients`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients: payload }),
+        }
+      );
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || `Recipients request failed (${res.status})`);
+      }
+      const result = await res.json().catch(() => null);
+      const inserted = Number(result?.inserted ?? payload.length);
+      const skipped = Number(result?.skipped ?? 0);
+      let notified = 0;
+      try {
+        notified = await notifyNewRecipients(payload);
+      } catch (notifyError: any) {
+        showToast(
+          notifyError?.message || 'Recipient invite email failed (check Graph permissions).',
+          'warning'
+        );
+      }
+      let message = `Added ${inserted} recipient${inserted === 1 ? '' : 's'}`;
+      if (skipped) message += ` • ${skipped} skipped`;
+      if (notified) message += ` • notified ${notified} ${notified === 1 ? 'user' : 'users'}`;
+      showToast(message, 'success');
+      setRecipientsRefreshKey((prev) => prev + 1);
+      handleInviteModalClose();
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to add recipients.', 'error');
+    } finally {
+      setAddingRecipients(false);
+    }
+  };
+
+  const inviteModal = (
+    <Modal
+      open={inviteModalOpen}
+      onClose={handleInviteModalClose}
+      title="Assign to Users & Groups"
+      width={800}
+      className="users-groups-modal"
+    >
+      <UserGroupSelector
+        key={`invite-selector-${inviteSelectorKey}`}
+        onSelectionChange={(selection) =>
+          setInviteSelection({
+            users: Array.isArray(selection.users) ? selection.users : [],
+            groups: Array.isArray(selection.groups) ? selection.groups : [],
+          })
+        }
+      />
+      <div
+        style={{
+          marginTop: 12,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}
+      >
+        <div className="small muted">
+          Selected: {inviteSelection.users.length} user{inviteSelection.users.length === 1 ? '' : 's'},{' '}
+          {inviteSelection.groups.length} group{inviteSelection.groups.length === 1 ? '' : 's'}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn ghost sm" type="button" onClick={handleInviteModalClose}>
+            Cancel
+          </button>
+          <button
+            className="btn sm"
+            type="button"
+            onClick={handleInviteMoreRecipients}
+            disabled={
+              addingRecipients ||
+              !canEditBatch ||
+              (inviteSelection.users.length === 0 && inviteSelection.groups.length === 0)
+            }
+          >
+            {addingRecipients ? 'Inviting...' : 'Invite selected'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+
   const batchName = batch?.toba_name || batch?.name || `Batch ${id}`;
   const statusValue = String(batch?.toba_status ?? batch?.status ?? '1');
   const statusLabel = statusValue === '1' ? 'Active' : 'Inactive';
@@ -237,9 +460,18 @@ const BatchDetailAdmin: React.FC = () => {
             <div className="title">{batchName}</div>
             <div className="muted small">Batch overview & controls</div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <Link to="/admin"><button className="btn ghost sm">Back to admin</button></Link>
             <Link to={`/admin/batch/${id}/completions`}><button className="btn ghost sm">View completions</button></Link>
+            <button
+              className="btn ghost sm"
+              type="button"
+              onClick={handleInviteModalOpen}
+              disabled={!canEditBatch}
+              title={!canEditBatch ? 'Edit permission required to modify recipients' : undefined}
+            >
+              Invite more recipients
+            </button>
           </div>
         </div>
         <hr style={{ margin: '12px 0', border: 'none', borderTop: '1px solid #f4f4f4' }} />
@@ -370,6 +602,7 @@ const BatchDetailAdmin: React.FC = () => {
           </div>
         </div>
       </div>
+      {inviteModal}
     </div>
   );
 };

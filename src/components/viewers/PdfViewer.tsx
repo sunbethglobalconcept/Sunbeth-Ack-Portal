@@ -203,12 +203,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
     >
       {/* Toolbar */}
       <div className="pdf-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderBottom: '1px solid #e6e6e6', background: '#fff', flexWrap: 'wrap' }}>
-        <button type="button" className="btn ghost xs" onClick={zoomOut} title="Zoom out">-</button>
+        <button type="button" className="btn ghost2 xs" onClick={zoomOut} title="Zoom out">-</button>
         <div className="small" style={{ minWidth: 56, textAlign: 'center' }}>{Math.round(scale * 100)}%</div>
-        <button type="button" className="btn ghost xs" onClick={zoomIn} title="Zoom in">+</button>
-        <button type="button" className="btn ghost xs" onClick={resetZoom} title="Reset zoom">Reset</button>
+        <button type="button" className="btn ghost2 xs" onClick={zoomIn} title="Zoom in">+</button>
+        <button type="button" className="btn ghost2 xs" onClick={resetZoom} title="Reset zoom">Reset</button>
         <div style={{ flex: 1 }} />
-        <button type="button" className="btn ghost xs" onClick={goPrev} disabled={!canPrev} title="Previous page">←</button>
+        <button type="button" className="btn ghost2 xs" onClick={goPrev} disabled={!canPrev} title="Previous page">←</button>
         <div className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input
             type="number"
@@ -223,7 +223,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
           />
           <span>/ {Math.max(1, numPages)}</span>
         </div>
-        <button type="button" className="btn ghost xs" onClick={goNext} disabled={!canNext} title="Next page">→</button>
+        <button type="button" className="btn ghost2 xs" onClick={goNext} disabled={!canNext} title="Next page">→</button>
       </div>
 
       {/* Page viewport, single page at a time for lazy rendering */}
