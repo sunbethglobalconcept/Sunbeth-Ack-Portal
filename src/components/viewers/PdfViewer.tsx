@@ -42,7 +42,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
       const tried: string[] = [];
 
       const doFetch = async (target: string) => {
-        const res = await fetch(target, { headers: { 'Accept': 'application/pdf,*/*;q=0.8' }, cache: 'no-store' as RequestCache });
+        const res = await fetch(target, {
+          headers: { Accept: 'application/pdf,*/*;q=0.8' },
+          cache: 'no-store' as RequestCache,
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         const ab = await res.arrayBuffer();
         return new Uint8Array(ab);
@@ -69,13 +72,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
           lastErr = e;
         }
       }
-      const errMsg = (lastErr instanceof Error ? lastErr.message : 'Failed to load PDF') + (tried.length ? `\nTried: ${tried.join(' | ')}` : '');
+      const errMsg =
+        (lastErr instanceof Error ? lastErr.message : 'Failed to load PDF') +
+        (tried.length ? `\nTried: ${tried.join(' | ')}` : '');
       throw new Error(errMsg);
     };
 
     (async () => {
       try {
-  const uint8Array = await fetchWithFallback(url);
+        const uint8Array = await fetchWithFallback(url);
         if (uint8Array.byteLength === 0) {
           throw new Error('The PDF file is empty, i.e. its size is zero bytes.');
         }
@@ -128,21 +133,21 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
         const isLast = numPages > 0 && page >= numPages;
         onLastPageChange(isLast);
       }
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
   }, [page, numPages, onPageChange, onLastPageChange]);
 
   if (loading) {
-    return (
-      <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>
-        Loading PDF...
-      </div>
-    );
+    return <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>Loading PDF...</div>;
   }
 
   if (error) {
     // Attempt a non-fetch fallback using iframe to the first candidate URL
     const firstUrl = (Array.isArray(url) ? url[0] : url) || '';
-    const fallbackUrl = firstUrl ? (firstUrl + (firstUrl.includes('?') ? '&' : '?') + 'download=1') : '';
+    const fallbackUrl = firstUrl
+      ? firstUrl + (firstUrl.includes('?') ? '&' : '?') + 'download=1'
+      : '';
     return (
       <div style={{ padding: 12 }}>
         <div style={{ marginBottom: 8, textAlign: 'center', color: '#d32f2f' }}>
@@ -150,8 +155,18 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
           <div style={{ fontSize: '0.9em', whiteSpace: 'pre-wrap' }}>{error}</div>
         </div>
         {firstUrl && (
-          <div style={{ border: '1px solid #ddd', borderRadius: 6, overflow: 'hidden', background: '#f5f5f5' }}>
-            <div className="small" style={{ padding: 8, background: '#fff', borderBottom: '1px solid #e6e6e6' }}>
+          <div
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: 6,
+              overflow: 'hidden',
+              background: '#f5f5f5',
+            }}
+          >
+            <div
+              className="small"
+              style={{ padding: 8, background: '#fff', borderBottom: '1px solid #e6e6e6' }}
+            >
               Trying inline preview fallback…
             </div>
             <iframe
@@ -167,20 +182,17 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
 
   if (!pdfData) {
     return (
-      <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>
-        No PDF data available
-      </div>
+      <div style={{ padding: 20, textAlign: 'center', color: '#666' }}>No PDF data available</div>
     );
   }
 
   const canPrev = page > 1;
   const canNext = page < Math.max(1, numPages);
-  const zoomOut = () => setScale(s => Math.max(0.5, Math.round((s - 0.1) * 10) / 10));
-  const zoomIn = () => setScale(s => Math.min(3, Math.round((s + 0.1) * 10) / 10));
+  const zoomOut = () => setScale((s) => Math.max(0.5, Math.round((s - 0.1) * 10) / 10));
+  const zoomIn = () => setScale((s) => Math.min(3, Math.round((s + 0.1) * 10) / 10));
   const resetZoom = () => setScale(1);
-  const goPrev = () => canPrev && setPage(p => p - 1);
-  const goNext = () => canNext && setPage(p => p + 1);
-
+  const goPrev = () => canPrev && setPage((p) => p - 1);
+  const goNext = () => canNext && setPage((p) => p + 1);
 
   // Width-based sizing for crisp rendering; zoom multiplies the available width
   const pageWidth = Math.floor(containerWidth * scale);
@@ -198,17 +210,44 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
         borderRadius: 6,
         background: '#f5f5f5',
         width: '100%',
-        maxWidth: '100%'
+        maxWidth: '100%',
       }}
     >
       {/* Toolbar */}
-      <div className="pdf-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderBottom: '1px solid #e6e6e6', background: '#fff', flexWrap: 'wrap' }}>
-        <button type="button" className="btn ghost2 xs" onClick={zoomOut} title="Zoom out">-</button>
-        <div className="small" style={{ minWidth: 56, textAlign: 'center' }}>{Math.round(scale * 100)}%</div>
-        <button type="button" className="btn ghost2 xs" onClick={zoomIn} title="Zoom in">+</button>
-        <button type="button" className="btn ghost2 xs" onClick={resetZoom} title="Reset zoom">Reset</button>
+      <div
+        className="pdf-toolbar"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: 8,
+          borderBottom: '1px solid #e6e6e6',
+          background: '#fff',
+          flexWrap: 'wrap',
+        }}
+      >
+        <button type="button" className="btn ghost2 xs" onClick={zoomOut} title="Zoom out">
+          -
+        </button>
+        <div className="small" style={{ minWidth: 56, textAlign: 'center' }}>
+          {Math.round(scale * 100)}%
+        </div>
+        <button type="button" className="btn ghost2 xs" onClick={zoomIn} title="Zoom in">
+          +
+        </button>
+        <button type="button" className="btn ghost2 xs" onClick={resetZoom} title="Reset zoom">
+          Reset
+        </button>
         <div style={{ flex: 1 }} />
-        <button type="button" className="btn ghost2 xs" onClick={goPrev} disabled={!canPrev} title="Previous page">←</button>
+        <button
+          type="button"
+          className="btn ghost2 xs"
+          onClick={goPrev}
+          disabled={!canPrev}
+          title="Previous page"
+        >
+          ←
+        </button>
         <div className="small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input
             type="number"
@@ -217,27 +256,32 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, onLastPageChange, onPageChan
             value={page}
             onChange={(e) => {
               const v = Number(e.target.value || '1');
-              if (Number.isFinite(v)) setPage(Math.min(Math.max(1, Math.floor(v)), Math.max(1, numPages)));
+              if (Number.isFinite(v))
+                setPage(Math.min(Math.max(1, Math.floor(v)), Math.max(1, numPages)));
             }}
             style={{ width: 64, padding: '2px 6px', border: '1px solid #ddd', borderRadius: 4 }}
           />
           <span>/ {Math.max(1, numPages)}</span>
         </div>
-        <button type="button" className="btn ghost2 xs" onClick={goNext} disabled={!canNext} title="Next page">→</button>
+        <button
+          type="button"
+          className="btn ghost2 xs"
+          onClick={goNext}
+          disabled={!canNext}
+          title="Next page"
+        >
+          →
+        </button>
       </div>
 
       {/* Page viewport, single page at a time for lazy rendering */}
       <div className="pdf-page-viewport" style={{ overflow: 'auto', padding: '12px 8px' }}>
         <Document
-        file={blobForPdf || undefined}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-        loading={
-          <div style={{ padding: 20, textAlign: 'center' }}>
-            Rendering PDF...
-          </div>
-        }
-      >
+          file={blobForPdf || undefined}
+          onLoadSuccess={onDocumentLoadSuccess}
+          onLoadError={onDocumentLoadError}
+          loading={<div style={{ padding: 20, textAlign: 'center' }}>Rendering PDF...</div>}
+        >
           <Page
             key={`page_${page}`}
             pageNumber={page}

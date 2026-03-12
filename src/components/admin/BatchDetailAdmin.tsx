@@ -61,6 +61,8 @@ const BatchDetailAdmin: React.FC = () => {
   const [inviteSelection, setInviteSelection] = useState<InviteSelection>({ users: [], groups: [] });
   const [inviteSelectorKey, setInviteSelectorKey] = useState(0);
   const [addingRecipients, setAddingRecipients] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(() => new Set());
+  const [removalBusy, setRemovalBusy] = useState(false);
 
   useEffect(() => {
     if (!sqliteReady || !id) return;
@@ -151,6 +153,113 @@ const BatchDetailAdmin: React.FC = () => {
     const acked = Math.max(0, r.acknowledged || 0);
     return acc + Math.max(0, total - acked);
   }, 0);
+
+  const normalizeEmail = (value?: string | null): string => {
+    const cleaned = String(value || '').trim().toLowerCase();
+    return cleaned.includes('@') ? cleaned : '';
+  };
+
+  const toggleRecipientSelection = (email?: string | null) => {
+    const normalized = normalizeEmail(email);
+    if (!normalized) return;
+    setSelectedRecipients((prev) => {
+      const next = new Set(prev);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (selectedRecipients.size === 0) return;
+    const available = new Set(
+      incompleteRows.map((row) => normalizeEmail(row.email)).filter(Boolean)
+    );
+    const filtered = [...selectedRecipients].filter((email) => available.has(email));
+    if (filtered.length !== selectedRecipients.size) {
+      setSelectedRecipients(new Set(filtered));
+    }
+  }, [incompleteRows, selectedRecipients]);
+
+  const removeRecipients = async (emailsToRemove: string[]) => {
+    if (!id || removalBusy) return;
+    const normalized = Array.from(
+      new Set(
+        emailsToRemove.map((raw) => normalizeEmail(raw)).filter(Boolean)
+      )
+    );
+    if (normalized.length === 0) return;
+    if (!apiBase) {
+      showToast('Backend API base is not configured.', 'error');
+      return;
+    }
+
+    setRemovalBusy(true);
+    try {
+      const res = await fetch(`${apiBase}/api/batches/${encodeURIComponent(id)}/recipients`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: normalized }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || `Failed to remove recipients (${res.status})`);
+      }
+      showToast(
+        `Removed ${normalized.length} recipient${normalized.length === 1 ? '' : 's'}`,
+        'success'
+      );
+      setSelectedRecipients(new Set());
+      setRecipientsRefreshKey((prev) => prev + 1);
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to remove recipients.', 'error');
+    } finally {
+      setRemovalBusy(false);
+    }
+  };
+
+  const handleRemoveSelected = () => {
+    removeRecipients(Array.from(selectedRecipients));
+  };
+
+  const handleRemoveSingle = (email?: string | null) => {
+    removeRecipients([email || '']);
+  };
+
+  const selectablePendingEmails = useMemo(() => {
+    const emails = new Set(
+      incompleteRows
+        .filter((row) => !row.completed)
+        .map((row) => normalizeEmail(row.email))
+        .filter(Boolean)
+    );
+    return Array.from(emails);
+  }, [incompleteRows]);
+
+  const selectableCount = selectablePendingEmails.length;
+  const allSelected = selectableCount > 0 && selectablePendingEmails.every((email) => selectedRecipients.has(email));
+  const selectAllDisabled = !canEditBatch || removalBusy || selectableCount === 0;
+  const removeAllDisabled = !canEditBatch || removalBusy || selectableCount === 0;
+  const selectAllLabel = allSelected ? 'Uncheck all' : 'Check all';
+
+  const handleSelectAllToggle = () => {
+    if (allSelected) {
+      setSelectedRecipients(new Set());
+    } else {
+      setSelectedRecipients(new Set(selectablePendingEmails));
+    }
+  };
+
+  const handleRemoveAll = () => {
+    removeRecipients(selectablePendingEmails);
+  };
+
+  const removeSelectedDisabled = !canEditBatch || removalBusy || selectedRecipients.size === 0;
+  const removeSelectedTitle = !canEditBatch
+    ? 'Edit permission required to remove recipients'
+    : selectedRecipients.size === 0
+      ? 'Select recipients to remove'
+      : undefined;
 
   const sendBatchNotificationEmail = async (): Promise<number> => {
     if (!batch || !id || incompleteRows.length === 0) return 0;
@@ -244,13 +353,12 @@ const BatchDetailAdmin: React.FC = () => {
 
   const notifyNewRecipients = async (list: RecipientPayload[]): Promise<number> => {
     if (!batch || !id) return 0;
-    const recipients = list
-      .map((row): NotificationRecipient | null => {
-        const email = (row.email || '').trim();
-        if (!email) return null;
-        return { address: email, name: row.displayName || undefined };
-      })
-      .filter((entry): entry is NotificationRecipient => entry !== null);
+    const recipients = list.reduce<NotificationRecipient[]>((acc, row) => {
+      const email = (row.email || '').trim();
+      if (!email) return acc;
+      acc.push({ address: email, name: row.displayName || undefined });
+      return acc;
+    }, []);
     if (recipients.length === 0) return 0;
 
     const portalUrl = `${window.location.origin}/batch/${id}`;
@@ -554,14 +662,46 @@ const BatchDetailAdmin: React.FC = () => {
         )}
 
         <div style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <div>
               <div className="title">Incomplete recipients</div>
               <div className="muted small">
                 {rowsLoading ? 'Loading…' : `${incompleteCount} of ${rows.length || 0} recipients have outstanding acknowledgements.`}
               </div>
             </div>
-            <Link to={`/admin/batch/${id}/completions`}><button className="btn ghost sm">View completed users</button></Link>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                className="btn ghost sm"
+                type="button"
+                onClick={handleSelectAllToggle}
+                disabled={selectAllDisabled}
+                title={!canEditBatch ? 'Edit permission required to select recipients' : selectableCount === 0 ? 'No pending recipients to select' : selectAllLabel}
+              >
+                {selectAllLabel}
+              </button>
+              <button
+                className="btn ghost sm"
+                type="button"
+                onClick={handleRemoveAll}
+                disabled={removeAllDisabled}
+                title={!canEditBatch ? 'Edit permission required to remove recipients' : selectableCount === 0 ? 'No pending recipients to remove' : 'Remove all pending recipients'}
+              >
+                Remove all
+              </button>
+              <button
+                className="btn ghost sm"
+                type="button"
+                onClick={handleRemoveSelected}
+                disabled={removeSelectedDisabled}
+                title={removeSelectedTitle}
+              >
+                Remove selected
+              </button>
+              {selectedRecipients.size > 0 && (
+                <div className="muted small">{selectedRecipients.size} selected</div>
+              )}
+              <Link to={`/admin/batch/${id}/completions`}><button className="btn ghost sm">View completed users</button></Link>
+            </div>
           </div>
           <div style={{ marginTop: 12 }}>
             {rowsLoading ? (
@@ -578,19 +718,78 @@ const BatchDetailAdmin: React.FC = () => {
                       const progressText = `${row.acknowledged || 0}/${row.total || 0} acknowledged`;
                       const tags = [row.department, row.jobTitle, row.location].filter(Boolean);
                       const lastSeen = row.completionAt ? `Last ack ${new Date(row.completionAt).toLocaleString()}` : 'No acknowledgements yet';
+                      const emailKey = normalizeEmail(row.email);
+                      const isSelectable = Boolean(emailKey && !row.completed);
+                      const isSelected = isSelectable && selectedRecipients.has(emailKey);
                       return (
-                        <div key={`${row.email}-${index}`} className="doc-row" style={{ padding: 10, border: '1px solid #f2f2f2', borderRadius: 6 }}>
-                          <div className="doc-meta" style={{ alignItems: 'center' }}>
-                            <div className="doc-icon">USR</div>
-                            <div>
-                              <div style={{ fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <span>{row.displayName || row.email}</span>
-                                <span className="badge" style={{ background: '#fff3cd', color: '#856404' }}>{progressText}</span>
+                        <div
+                          key={`${row.email}-${index}`}
+                          className="doc-row"
+                          style={{
+                            padding: 10,
+                            border: '1px solid #f2f2f2',
+                            borderRadius: 6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 28,
+                                height: 28,
+                                borderRadius: 6,
+                                border: '1px solid transparent',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={!isSelectable || removalBusy || !canEditBatch}
+                                onChange={() => isSelectable && toggleRecipientSelection(row.email)}
+                                aria-label={`Select ${row.email} for removal`}
+                                style={{ width: 16, height: 16 }}
+                              />
+                            </label>
+                            <div className="doc-meta" style={{ alignItems: 'center', display: 'flex', minWidth: 0 }}>
+                              <div className="doc-icon">USR</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
+                                  <span>{row.displayName || row.email}</span>
+                                  <span className="badge" style={{ background: '#fff3cd', color: '#856404' }}>{progressText}</span>
+                                </div>
+                                <div className="muted small">{row.email}</div>
+                                <div className="muted small">{tags.join(' • ')}</div>
+                                <div className="muted small">{lastSeen}</div>
                               </div>
-                              <div className="muted small">{row.email}</div>
-                              <div className="muted small">{tags.join(' • ')}</div>
-                              <div className="muted small">{lastSeen}</div>
                             </div>
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-end',
+                              gap: 6,
+                              minWidth: 120,
+                            }}
+                          >
+                            <span className="small muted">{row.completed ? 'Completed' : 'Pending'}</span>
+                            {!row.completed && (
+                              <button
+                                className="btn ghost sm"
+                                type="button"
+                                onClick={() => handleRemoveSingle(row.email)}
+                                disabled={!canEditBatch || removalBusy || !emailKey}
+                                title={!canEditBatch ? 'Edit permission required to remove recipients' : undefined}
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

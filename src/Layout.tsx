@@ -23,6 +23,21 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
   } = useExternalAuth();
   const { externalSupport, loaded: flagsLoaded } = useFeatureFlags();
   const { tenant } = useTenant();
+  const isMobileViewport = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 900px)').matches;
+
+  const getStoredStickyPreference = (): boolean | null => {
+    try {
+      const stored = localStorage.getItem('sunbeth_sticky_header');
+      if (stored === 'true' || stored === 'false') return stored === 'true';
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const ls = localStorage.getItem('sunbeth_theme');
@@ -45,18 +60,12 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
     }
   });
   const [stickyHeader, setStickyHeader] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem('sunbeth_sticky_header');
-      if (stored === 'true' || stored === 'false') return stored === 'true';
-    } catch {
-      /* fall through */
-    }
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(max-width: 900px)').matches
-    ) {
+    const stored = getStoredStickyPreference();
+    if (isMobileViewport() && stored === null) {
       return false;
+    }
+    if (stored !== null) {
+      return stored;
     }
     return true;
   });
@@ -305,7 +314,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
         {/* show auth area when signed-in (MSAL) or as external; else show a light nav */}
         {account ? (
           <div className={`${headerActionsClass} signed-in`}>
-            <AppWelcomeTour />
+            {/* <AppWelcomeTour /> */}
             {rbac.isSuperAdmin && (
               <div
                 title="Super Admin (from REACT_APP_SUPER_ADMINS)"
@@ -382,7 +391,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           </div>
         ) : isExternal ? (
           <div className={`${headerActionsClass} signed-in`}>
-            <AppWelcomeTour />
+            {/* <AppWelcomeTour /> */}
             <button
               className="btn ghost sm"
               aria-label="Toggle theme"
@@ -440,7 +449,7 @@ const Layout: React.FC<React.PropsWithChildren> = ({ children }) => {
           </div>
         ) : (
           <div className={`${headerActionsClass} guest`}>
-            <AppWelcomeTour />
+            {/* <AppWelcomeTour /> */}
             {/* <a
               href="/about"
               className="small"

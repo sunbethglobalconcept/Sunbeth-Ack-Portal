@@ -1036,6 +1036,48 @@ footer {
 
 :root[data-theme='dark'] .progressBar { background: #2a3a33; }
 
+/* Additional structural coverage for dark mode */
+:root[data-theme='dark'] input,
+:root[data-theme='dark'] select,
+:root[data-theme='dark'] textarea,
+:root[data-theme='dark'] .form-control {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+:root[data-theme='dark'] .card,
+:root[data-theme='dark'] .batch-summary,
+:root[data-theme='dark'] .document-reader .card,
+:root[data-theme='dark'] .document-reader .dr-card,
+:root[data-theme='dark'] .doc-row,
+:root[data-theme='dark'] .viewer {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='dark'] .doc-row:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme='dark'] .doc-meta,
+:root[data-theme='dark'] .doc-meta .muted,
+:root[data-theme='dark'] .muted {
+  color: var(--muted);
+}
+
+:root[data-theme='dark'] .header-user {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+:root[data-theme='dark'] .header-user button.btn.sm {
+  color: #fff;
+}
+
+:root[data-theme='dark'] .toast {
+  background: rgba(0, 0, 0, 0.95);
+}
+
 /* ===== SweetAlert2 theming (Sunbeth) ===== */
 .swal2-sunbeth.swal2-popup {
   background: var(--card);

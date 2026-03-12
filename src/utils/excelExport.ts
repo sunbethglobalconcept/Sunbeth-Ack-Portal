@@ -17,13 +17,18 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     const local = 'http://127.0.0.1:4000';
     return Array.from(new Set([envBase, hinted, local].filter(Boolean)));
   };
-  const tryFetchJson = async (path: string) => {
+  const tryFetchJson = async (path: string, init: RequestInit = {}) => {
     const bases = getApiBases();
     let lastErr: any = null;
     for (const b of bases) {
       try {
-        const r = await fetch(`${b}${path}`);
-        if (r.ok) return await r.json();
+        const requestInit: RequestInit = {
+          ...init,
+          cache: init.cache || 'no-store',
+        };
+        const res = await fetch(`${b}${path}`, requestInit);
+        if (res.ok) return await res.json();
+        lastErr = lastErr || new Error(`Request failed (${res.status})`);
       } catch (e) { lastErr = e; }
     }
     if (lastErr) throw lastErr;
@@ -54,8 +59,12 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
     try {
       const qs = new URLSearchParams();
       qs.set('limit', '5000');
-      if (opts.adminEmail) qs.set('adminEmail', String(opts.adminEmail));
-      const res = await tryFetchJson(`/api/admin/consents/export?${qs.toString()}`);
+      if (adminEmail) qs.set('adminEmail', adminEmail);
+      const headerSet: Record<string, string> = {};
+      if (adminEmail) headerSet['X-Admin-Email'] = adminEmail;
+      const res = await tryFetchJson(`/api/admin/consents/export?${qs.toString()}`, {
+        headers: Object.keys(headerSet).length ? headerSet : undefined,
+      });
       const items = Array.isArray((res as any)?.items)
         ? (res as any).items
         : Array.isArray((res as any)?.consents)
@@ -68,6 +77,17 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
       console.warn('consents_export_api_failed', e);
     }
     return [];
+  };
+
+  const fetchBatchCompletions = async (batchId: string): Promise<any[]> => {
+    if (!batchId) return [];
+    try {
+      const res = await tryFetchJson(`/api/batches/${encodeURIComponent(batchId)}/completions`);
+      return Array.isArray(res) ? res : [];
+    } catch (e) {
+      console.warn('batch_completions_fetch_failed', batchId, e);
+      return [];
+    }
   };
   const year = String((opts.year ?? new Date().getFullYear()));
   const adminEmail = String(opts.adminEmail || '').trim().toLowerCase(); // kept for potential auth headers
@@ -111,8 +131,21 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
   // Batch lookup for consents export enrichment
   const batches = await fetchBatches();
   const batchMap = new Map(
-    (Array.isArray(batches) ? batches : []).map((b: any) => [String(b.id || b.toba_batchid || b.batchId || ''), String(b.name || b.toba_name || '')])
+    (Array.isArray(batches) ? batches : []).map((b: any) => [
+      String(b.id || b.toba_batchid || b.batchId || b.ID || ''),
+      String(b.name || b.toba_name || ''),
+    ])
   );
+  const batchInfoMap = new Map(
+    (Array.isArray(batches) ? batches : []).map((b: any) => [
+      String(b.id || b.toba_batchid || b.batchId || b.ID || ''),
+      b,
+    ])
+  );
+
+  let recipientStatusRows: any[] = [];
+  let insightBatchIds: string[] = [];
+  let consentRowCount = 0;
 
   // Add Acknowledgements sheet (robust, business + user + batch + document)
   try {
@@ -140,10 +173,82 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
       department: r.department || recMap.get(recKey(r.batchId, r.email))?.department || '',
       primaryGroup: r.primaryGroup || recMap.get(recKey(r.batchId, r.email))?.primaryGroup || '',
       jobTitle: recMap.get(recKey(r.batchId, r.email))?.jobTitle || '',
-      location: recMap.get(recKey(r.batchId, r.email))?.location || ''
+      location: recMap.get(recKey(r.batchId, r.email))?.location || '',
+      status: r.acknowledged
+        ? 'Completed'
+        : r.dueDate && new Date(String(r.dueDate)).getTime() < Date.now()
+          ? 'Overdue'
+          : 'Pending',
     }));
     const wsAcks = XLSX.utils.json_to_sheet(norm);
     XLSX.utils.book_append_sheet(wb, wsAcks, 'Acknowledgements');
+
+    const batchIdsFromAcks = Array.from(
+      new Set(
+        (norm as any[])
+          .map((r: any) => String(r.batchId || ''))
+          .filter((id) => !!id)
+      )
+    );
+    const allBatchIds = Array.from(
+      new Set([
+        ...batchIdsFromAcks,
+        ...Array.from(batchInfoMap.keys()).filter((id) => !!id),
+      ])
+    );
+    insightBatchIds = allBatchIds;
+
+    const completionRows: any[] = [];
+    for (const batchId of allBatchIds) {
+      const rows = await fetchBatchCompletions(batchId);
+      if (!rows.length) continue;
+      const batchInfo = batchInfoMap.get(batchId);
+      completionRows.push(
+        ...rows.map((row) => ({
+          ...row,
+          batchId,
+          batchName:
+            row.batchName ||
+            String(
+              batchInfo?.name || batchInfo?.toba_name || batchMap.get(batchId) || ''
+            ),
+          dueDate:
+            row.dueDate ||
+            batchInfo?.dueDate ||
+            batchInfo?.toba_duedate ||
+            batchInfo?.startDate ||
+            '',
+        }))
+      );
+    }
+    recipientStatusRows = completionRows.map((row) => {
+      const acknowledged = Number(row.acknowledged || 0);
+      const total = Number(row.total || 0);
+      const completed = row.completed || acknowledged >= total;
+      const status = completed
+        ? 'Completed'
+        : acknowledged > 0
+          ? 'In Progress'
+          : 'Not Started';
+      const completionRate = total ? Math.round((acknowledged / total) * 100) : 0;
+      return {
+        batchId: row.batchId || '',
+        batchName: row.batchName || '',
+        dueDate: row.dueDate || '',
+        email: String(row.email || ''),
+        displayName: String(row.displayName || row.email || ''),
+        businessName: String(row.businessName || ''),
+        department: String(row.department || ''),
+        primaryGroup: String(row.primaryGroup || ''),
+        jobTitle: String(row.jobTitle || ''),
+        location: String(row.location || ''),
+        acknowledged,
+        total,
+        completionRate,
+        status,
+        completionAt: String(row.completionAt || row.lastAckDate || ''),
+      };
+    });
   } catch (e) {
     // Non-fatal if acks export is unavailable or user lacks permission
     console.warn('Acknowledgements export failed or unavailable', e);
@@ -153,6 +258,7 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
   try {
     const consents = await fetchConsents();
     const consRows = Array.isArray(consents) ? consents : [];
+    consentRowCount = consRows.length;
     const normCons = consRows.map((c: any) => {
       const email = String(c.email || c.user || '');
       const batchId = c.batchId || c.batch_id;
@@ -170,11 +276,11 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
         year: yearFromTs,
         businessName,
         email,
-        batchName: String(batchName), 
-        consentedAt: String(consentedAt),       
-        batchId: String(batchId || ''),        
+        batchName: String(batchName),
+        consentedAt: String(consentedAt),
+        batchId: String(batchId || ''),
         department: String(department),
-        businessId,      
+        businessId,
         version: version === null ? '' : String(version),
         receiptId: String(receiptId),
       };
@@ -188,6 +294,71 @@ export const exportAnalyticsExcel = async (opts: ExportOpts = {}) => {
   } catch (e) {
     console.warn('Consents export failed or unavailable', e);
   }
+
+  const statusSheetData =
+    recipientStatusRows.length > 0
+      ? recipientStatusRows
+      : [{ note: 'Recipient status data unavailable (batch completions fetch failed).' }];
+  const wsRecipientStatus = XLSX.utils.json_to_sheet(statusSheetData);
+  XLSX.utils.book_append_sheet(wb, wsRecipientStatus, 'Recipient Status');
+
+  const totalAssignments = recipientStatusRows.reduce(
+    (acc, row) => acc + (Number(row.total) || 0),
+    0
+  );
+  const acknowledgedAssignments = recipientStatusRows.reduce(
+    (acc, row) => acc + (Number(row.acknowledged) || 0),
+    0
+  );
+  const overallCompletionRate = totalAssignments
+    ? Math.round((acknowledgedAssignments / totalAssignments) * 100)
+    : 0;
+  const statusCounts = recipientStatusRows.reduce(
+    (acc, row) => {
+      const label = row.status || 'Not Started';
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
+  const deptStats = new Map<string, { department: string; notStarted: number; total: number }>();
+  recipientStatusRows.forEach((row) => {
+    const department = row.department || 'Unassigned';
+    const entry = deptStats.get(department) || { department, notStarted: 0, total: 0 };
+    if (row.status === 'Not Started') entry.notStarted += 1;
+    entry.total += 1;
+    deptStats.set(department, entry);
+  });
+  const topDepartments = Array.from(deptStats.values())
+    .sort((a, b) => b.notStarted - a.notStarted)
+    .slice(0, 5);
+
+  const insightRows: Array<{ metric: string; value: string | number; notes?: string }> = [
+    { metric: 'Batches scanned', value: insightBatchIds.length },
+    { metric: 'Recipients tracked', value: recipientStatusRows.length },
+    { metric: 'Assignments compiled', value: totalAssignments },
+    { metric: 'Acknowledged assignments', value: acknowledgedAssignments },
+    { metric: 'Overall completion rate (%)', value: `${overallCompletionRate}%` },
+    { metric: 'Completed recipients', value: statusCounts['Completed'] || 0 },
+    { metric: 'In progress recipients', value: statusCounts['In Progress'] || 0 },
+    { metric: 'Not started recipients', value: statusCounts['Not Started'] || 0 },
+  ];
+  topDepartments.forEach((dept, idx) => {
+    const pct = dept.total ? Math.round((dept.notStarted / dept.total) * 100) : 0;
+    insightRows.push({
+      metric: `Priority department #${idx + 1}`,
+      value: dept.department,
+      notes: `${dept.notStarted} of ${dept.total} not started (${pct}%)`,
+    });
+  });
+  insightRows.push({
+    metric: 'Consents exported',
+    value: consentRowCount,
+    notes: 'Admin export attempt',
+  });
+
+  const wsInsights = XLSX.utils.json_to_sheet(insightRows);
+  XLSX.utils.book_append_sheet(wb, wsInsights, 'Insights');
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
