@@ -351,6 +351,11 @@ const BatchEditor: React.FC<BatchEditorProps> = (props) => {
                         body: JSON.stringify({ driveId, itemId, name }),
                       });
                       const j = await res.json().catch(() => null);
+                      if (!res.ok) {
+                        const errMsg =
+                          (j && (j.error || j.details)) || `Graph import failed (${res.status})`;
+                        throw new Error(errMsg);
+                      }
                       const localUrl = j?.url ? `${base}${j.url}` : undefined;
                       // Preserve original SharePoint link in url; store server copy in localUrl
                       const doc: SimpleDoc = {

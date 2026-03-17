@@ -64,6 +64,26 @@ const DocumentLibraryManager: React.FC = () => {
       <div style={{ maxWidth: 900, margin: '0 auto', marginTop: 24 }}>
         <div
           className="card document-library-card"
+          style={{
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 12,
+            background: 'var(--card-bg, var(--card))',
+          }}
+        >
+          <strong>Media Library workflow</strong>
+          <p className="muted small" style={{ margin: '6px 0 0 0' }}>
+            Files chosen from SharePoint are downloaded to <code>/data/uploads/&lt;year&gt;/&lt;month&gt;</code>
+            on the backend. After you consent to <code>Sites.Read.All</code> and <code>Files.Read.All</code>
+            in MSAL, re-run the SharePoint import (Admin → Documents → Browse) so the PDF is cached locally
+            and will show up here. Use Refresh after the import to view the new entry before selecting it
+            for a batch.
+          </p>
+        </div>
+      </div>
+      <div style={{ maxWidth: 900, margin: '0 auto', marginTop: 24 }}>
+        <div
+          className="card document-library-card"
           style={{ borderRadius: 8, padding: 0, overflow: 'hidden' }}
         >
           <div
