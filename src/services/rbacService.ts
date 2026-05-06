@@ -19,8 +19,22 @@ export async function getRolePermissions(role?: string): Promise<RolePermission[
   return res.json();
 }
 
-export async function setRolePermissions(role: string, mapping: Record<string, boolean>): Promise<void> {
-  const res = await fetch(`${api()}/api/rbac/role-permissions`, {
+export async function getRolePermissionsCount(): Promise<number> {
+  const res = await fetch(`${api()}/api/rbac/role-permissions/count`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('role_perms_count_failed');
+  const body = await res.json();
+  return Number(body?.count ?? 0);
+}
+
+export async function setRolePermissions(role: string, mapping: Record<string, boolean>, adminEmail?: string): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  let url = `${api()}/api/rbac/role-permissions`;
+  const normalizedEmail = String(adminEmail || '').trim().toLowerCase();
+  if (normalizedEmail) {
+    url += `${url.includes('?') ? '&' : '?'}adminEmail=${encodeURIComponent(normalizedEmail)}`;
+    headers['X-Admin-Email'] = normalizedEmail;
+  }
+  const res = await fetch(url, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role, mapping })
   });
   if (!res.ok) throw new Error('role_perms_update_failed');

@@ -1,6 +1,14 @@
 /* eslint-disable max-lines, max-lines-per-function, complexity, react-hooks/exhaustive-deps, @typescript-eslint/no-empty-function */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { getPermissionCatalog, getRolePermissions, setRolePermissions, getUserPermissions, setUserPermissions, type PermissionDef } from '../services/rbacService';
+import {
+  getPermissionCatalog,
+  getRolePermissions,
+  getRolePermissionsCount,
+  setRolePermissions,
+  getUserPermissions,
+  setUserPermissions,
+  type PermissionDef,
+} from '../services/rbacService';
 import { getRoles, createRole, deleteRole } from '../services/dbService';
 import { showToast } from '../utils/alerts';
 import { isSQLiteEnabled } from '../utils/runtimeConfig';
@@ -13,6 +21,7 @@ const RBACMatrix: React.FC = () => {
   const [perms, setPerms] = useState<PermissionDef[]>([]);
   const [roleMap, setRoleMap] = useState<Record<string, Record<string, boolean>>>({});
   const [roles, setRoles] = useState<string[]>([]);
+  const [rolePermissionCount, setRolePermissionCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'role'|'user'>('role');
   const [newRole, setNewRole] = useState('');
@@ -29,6 +38,15 @@ const RBACMatrix: React.FC = () => {
   const [results, setResults] = useState<GraphUser[]>([]);
   const [searching, setSearching] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const refreshRolePermissionCount = useCallback(async () => {
+    try {
+      const count = await getRolePermissionsCount();
+      const value = Number.isNaN(Number(count)) ? 0 : Number(count);
+      setRolePermissionCount(value);
+    } catch {
+      setRolePermissionCount(null);
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -70,13 +88,20 @@ const RBACMatrix: React.FC = () => {
         showToast('Failed to load RBAC matrix', 'error');
       }
     })();
-  }, [sqlite]);
+    void refreshRolePermissionCount();
+  }, [sqlite, refreshRolePermissionCount]);
 
+  const adminEmail = (account?.username || '').trim().toLowerCase();
   const saveRole = async (role: string) => {
     setBusy(true);
     try {
-      await setRolePermissions(role, roleMap[role] || {});
+      await setRolePermissions(role, roleMap[role] || {}, adminEmail);
       showToast(`Saved ${role} permissions`, 'success');
+      try {
+        await refreshRolePermissionCount();
+      } catch {
+        /* ignore count refresh failures so saves still succeed */
+      }
     } catch { showToast('Failed to save role permissions', 'error'); }
     finally { setBusy(false); }
   };
@@ -100,7 +125,7 @@ const RBACMatrix: React.FC = () => {
     try {
       // 1) Copy permission mapping
       const mapping = roleMap[src] || {};
-      await setRolePermissions(dst, mapping);
+      await setRolePermissions(dst, mapping, adminEmail);
       // 2) Migrate assignments: src -> dst
       const allRoles = await getRoles();
       const toMove = allRoles.filter(r => (r.role || '').toLowerCase() === src.toLowerCase());
@@ -112,7 +137,7 @@ const RBACMatrix: React.FC = () => {
       const cleared: Record<string, boolean> = {};
       perms.forEach(p => { cleared[p.key] = false; });
       setRoleMap(prev => ({ ...prev, [src]: cleared }));
-      await setRolePermissions(src, cleared);
+      await setRolePermissions(src, cleared, adminEmail);
       // 4) Update UI roles list
       setRoles(prev => Array.from(new Set([...prev, dst])).sort());
       showToast(`Renamed ${src} → ${dst}`, 'success');
@@ -200,6 +225,11 @@ const RBACMatrix: React.FC = () => {
       <div className="rbac-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12, borderBottom: '1px solid #eee' }}>
         <button className={tab==='role'?'btn sm':'btn ghost sm'} onClick={() => setTab('role')}>By Role</button>
         <button className={tab==='user'?'btn sm':'btn ghost sm'} onClick={() => setTab('user')}>By User</button>
+      </div>
+      <div className="small muted" style={{ marginBottom: 12 }}>
+        {rolePermissionCount === null
+          ? 'Counting RBAC entries...'
+          : `${rolePermissionCount.toLocaleString()} stored role-permission records`}
       </div>
 
       {tab === 'role' && (

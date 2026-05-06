@@ -56,6 +56,7 @@ import DocumentLibraryManager from './admin/DocumentLibraryManager';
 // SharePointBrowser extracted to ./admin/SharePointBrowser
 import SharePointBrowser from './admin/SharePointBrowser';
 import { Link } from 'react-router-dom';
+import { getRolePermissionsCount } from '../services/rbacService';
 
 // LocalLibraryPicker moved to ./admin/LocalLibraryPicker
 
@@ -66,6 +67,7 @@ const AdminPanel: React.FC = () => {
   const { externalSupport } = useFeatureFlags();
   const policiesFeatureEnabled = isPoliciesEnabled();
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'policies' | 'rbac' | 'manage' | 'users' | 'batch' | 'analytics' | 'notificationEmails' | 'diagnostics' | 'library'>('overview');
+  const [rolePermissionCount, setRolePermissionCount] = useState<number | null>(null);
   const [usersSubtab, setUsersSubtab] = useState<'directory' | 'guests' | 'roles' | 'permissions' | 'imports'>('directory');
   const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
   const [originalRecipientEmails, setOriginalRecipientEmails] = useState<Set<string>>(new Set());
@@ -97,6 +99,39 @@ const AdminPanel: React.FC = () => {
     } catch { setDbOk(false); }
   };
   useEffect(() => { pingDb(); }, [/* on mount and when sqlite flag changes */]);
+  useEffect(() => {
+    let canceled = false;
+    (async () => {
+      try {
+        const count = await getRolePermissionsCount();
+        if (canceled) return;
+        const safe = Number.isNaN(Number(count)) ? 0 : Number(count);
+        setRolePermissionCount(safe);
+      } catch {
+        if (!canceled) setRolePermissionCount(null);
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (activeTab !== 'rbac') return;
+    let canceled = false;
+    (async () => {
+      try {
+        const count = await getRolePermissionsCount();
+        if (canceled) return;
+        const safe = Number.isNaN(Number(count)) ? 0 : Number(count);
+        setRolePermissionCount(safe);
+      } catch {
+        if (!canceled) setRolePermissionCount(null);
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [activeTab]);
   const [healthOpen, setHealthOpen] = useState(false);
   const [healthSteps, setHealthSteps] = useState<Step[] | null>(null);
   const [granting, setGranting] = useState(false);
@@ -996,6 +1031,12 @@ const AdminPanel: React.FC = () => {
         {/* Tab-specific Tour Controls */}
         <TabTourManager activeTab={activeTab} userRole="admin" />
 
+        <div className="small muted" style={{ marginTop: 8 }}>
+          {rolePermissionCount === null
+            ? 'Counting RBAC entries…'
+            : `${rolePermissionCount.toLocaleString()} role-permission records stored`}
+        </div>
+
         {/* Tab Content */}
         {activeTab === 'overview' && (
           <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="overview-stats">
@@ -1605,4 +1646,3 @@ const BusinessesBulkUploadSection: React.FC = () => {
 };
 
 export default AdminPanel;
-
